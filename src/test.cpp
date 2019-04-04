@@ -54,12 +54,18 @@ TEST(lu_decomp, solvers) {
   matrix ltu = dot(l, u);
   for (int i = 0; i < l.shape()[0]; i++) {
     for (int j = 0; j < l.shape()[1]; j++) {
-      EXPECT_NEAR(ltu(i, j), m1(i, j), 1e-8);
+      EXPECT_EQ(ltu(i, j), m1(i, j));
       if (j > i) {
         EXPECT_EQ(l(i, j), 0.0);
         EXPECT_EQ(u(j, i), 0.0);
       }
     }
+  }
+  vector x_expected{{-1.0, 1.0, 2.0, -4.0}};
+  vector b = dot(m1, x_expected);
+  vector x = lu_solve(m1, b);
+  for (int i = 0; i < b.shape()[0]; i++) {
+    EXPECT_EQ(x(i), x_expected(i));
   }
 }
 
@@ -69,7 +75,11 @@ TEST(product, matrix) {
       {3.0, 6.0, 9.0, 12.0}, {4.0, 7.0, 10.0, 13.0}, {5.0, 8.0, 11.0, 14.0}};
   matrix expected{{-23.0, -38.0, -53.0, -68.0}, {31.0, 52.0, 73.0, 94.0}};
   matrix result = dot(m1, m2);
+  vector x{2.0, 4.0, 5.0};
+  vector y_expected{-24.0, 30.0};
+  vector y = dot(m1, x);
   for (int i = 0; i < m1.shape()[0]; i++) {
+    EXPECT_EQ(y_expected(i), y(i));
     for (int j = 0; j < m2.shape()[1]; j++) {
       EXPECT_EQ(expected(i, j), result(i, j));
     }
