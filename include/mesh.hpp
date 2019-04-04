@@ -119,94 +119,119 @@ public:
     return vel_v_cva_(i + ghost_cells, j + ghost_cells);
   }
 
-  auto ghostcells_left_Temp() noexcept {
-    return xt::view(temp_cva_, 0, xt::range(1, temp_cva_.shape()[1] - 1));
+  // The joys of template metaprogramming - code that's selectively (for unknown
+  // reasons) extremely sensitive to having the right types
+  using tensor_type = xt::xtensor<double, 2>;
+  using range_type =
+      decltype(xt::range(std::declval<int>(), std::declval<int>()));
+  using vert_view = decltype(xt::view(std::declval<tensor_type &>(),
+                                      std::declval<unsigned long>(),
+                                      std::declval<range_type>()));
+  using horiz_view = decltype(xt::view(std::declval<tensor_type &>(),
+                                       std::declval<range_type>(),
+                                       std::declval<unsigned long>()));
+
+  vert_view ghostcells_left_Temp() noexcept {
+    // An example of the selective sensitivity of templates to the types
+    return xt::view(temp_cva_, static_cast<unsigned long>(0),
+                    xt::range(1, temp_cva_.shape()[1] - 1));
   }
-  auto ghostcells_right_Temp() noexcept {
+  vert_view ghostcells_right_Temp() noexcept {
     return xt::view(temp_cva_, temp_cva_.shape()[0] - 1,
                     xt::range(1, temp_cva_.shape()[1] - 2));
   }
-  auto ghostcells_top_Temp() noexcept {
+  horiz_view ghostcells_top_Temp() noexcept {
     return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1),
                     temp_cva_.shape()[1] - 1);
   }
-  auto ghostcells_bottom_Temp() noexcept {
-    return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1), 0);
+  horiz_view ghostcells_bottom_Temp() noexcept {
+    return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(0));
   }
 
-  auto ghostcells_left_vel_u() noexcept {
-    return xt::view(vel_u_cva_, 0, xt::range(1, vel_u_cva_.shape()[1] - 1));
+  vert_view ghostcells_left_vel_u() noexcept {
+    return xt::view(vel_u_cva_, static_cast<unsigned long>(0),
+                    xt::range(1, vel_u_cva_.shape()[1] - 1));
   }
-  auto ghostcells_right_vel_u() noexcept {
+  vert_view ghostcells_right_vel_u() noexcept {
     return xt::view(vel_u_cva_, vel_u_cva_.shape()[0] - 1,
                     xt::range(1, vel_u_cva_.shape()[1] - 1));
   }
-  auto ghostcells_top_vel_u() noexcept {
+  horiz_view ghostcells_top_vel_u() noexcept {
     return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1),
                     vel_u_cva_.shape()[1] - 1);
   }
-  auto ghostcells_bottom_vel_u() noexcept {
-    return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1), 0);
+  horiz_view ghostcells_bottom_vel_u() noexcept {
+    return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(0));
   }
 
-  auto ghostcells_left_vel_v() noexcept {
-    return xt::view(vel_v_cva_, 0, xt::range(1, vel_v_cva_.shape()[1] - 1));
+  vert_view ghostcells_left_vel_v() noexcept {
+    return xt::view(vel_v_cva_, static_cast<unsigned long>(0),
+                    xt::range(1, vel_v_cva_.shape()[1] - 1));
   }
-  auto ghostcells_right_vel_v() noexcept {
+  vert_view ghostcells_right_vel_v() noexcept {
     return xt::view(vel_v_cva_, vel_v_cva_.shape()[0] - 1,
                     xt::range(1, vel_v_cva_.shape()[1] - 1));
   }
-  auto ghostcells_top_vel_v() noexcept {
+  horiz_view ghostcells_top_vel_v() noexcept {
     return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
                     vel_v_cva_.shape()[1] - 1);
   }
-  auto ghostcells_bottom_vel_v() noexcept {
-    return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1), 0);
+  horiz_view ghostcells_bottom_vel_v() noexcept {
+    return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(0));
   }
 
-  auto bndrycells_left_Temp() noexcept {
-    return xt::view(temp_cva_, 1, xt::range(1, temp_cva_.shape()[1] - 1));
+  vert_view bndrycells_left_Temp() noexcept {
+    return xt::view(temp_cva_, static_cast<unsigned long>(1),
+                    xt::range(1, temp_cva_.shape()[1] - 1));
   }
-  auto bndrycells_right_Temp() noexcept {
+  vert_view bndrycells_right_Temp() noexcept {
     return xt::view(temp_cva_, temp_cva_.shape()[0] - 2,
                     xt::range(1, temp_cva_.shape()[1] - 1));
   }
-  auto bndrycells_top_Temp() noexcept {
+  horiz_view bndrycells_top_Temp() noexcept {
     return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1),
                     temp_cva_.shape()[1] - 2);
   }
-  auto bndrycells_bottom_Temp() noexcept {
-    return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1), 1);
+  horiz_view bndrycells_bottom_Temp() noexcept {
+    return xt::view(temp_cva_, xt::range(1, temp_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(1));
   }
 
-  auto bndrycells_left_vel_u() noexcept {
-    return xt::view(vel_u_cva_, 1, xt::range(1, vel_u_cva_.shape()[1] - 1));
+  vert_view bndrycells_left_vel_u() noexcept {
+    return xt::view(vel_u_cva_, static_cast<unsigned long>(1),
+                    xt::range(1, vel_u_cva_.shape()[1] - 1));
   }
-  auto bndrycells_right_vel_u() noexcept {
+  vert_view bndrycells_right_vel_u() noexcept {
     return xt::view(vel_u_cva_, vel_u_cva_.shape()[0] - 2,
                     xt::range(1, vel_u_cva_.shape()[1] - 1));
   }
-  auto bndrycells_top_vel_u() noexcept {
+  horiz_view bndrycells_top_vel_u() noexcept {
     return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1),
                     vel_u_cva_.shape()[1] - 2);
   }
-  auto bndrycells_bottom_vel_u() noexcept {
-    return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1), 1);
+  horiz_view bndrycells_bottom_vel_u() noexcept {
+    return xt::view(vel_u_cva_, xt::range(1, vel_u_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(1));
   }
 
-  auto bndrycells_left_vel_v() noexcept {
-    return xt::view(vel_v_cva_, 1, xt::range(1, vel_v_cva_.shape()[1] - 1));
+  vert_view bndrycells_left_vel_v() noexcept {
+    return xt::view(vel_v_cva_, static_cast<unsigned long>(1),
+                    xt::range(1, vel_v_cva_.shape()[1] - 1));
   }
-  auto bndrycells_right_vel_v() noexcept {
+  vert_view bndrycells_right_vel_v() noexcept {
     return xt::view(vel_v_cva_, vel_v_cva_.shape()[0] - 2,
                     xt::range(1, vel_v_cva_.shape()[1] - 1));
   }
-  auto bndrycells_top_vel_v() noexcept {
+  horiz_view bndrycells_top_vel_v() noexcept {
     return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
                     vel_v_cva_.shape()[0] - 2);
   }
-  auto bndrycells_bottom_vel_v() noexcept {
-    return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1), 1);
+  horiz_view bndrycells_bottom_vel_v() noexcept {
+    return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
+                    static_cast<unsigned long>(1));
   }
 
   real interpolate_Temp(real x, real y) const noexcept {

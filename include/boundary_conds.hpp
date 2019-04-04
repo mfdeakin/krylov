@@ -14,6 +14,8 @@
 static real homogeneous(real, real, real) { return 0.0; }
 static real null_coord(int) { return 0.0; }
 
+enum class BCType { Dirichlet, Neumann };
+
 // This implements a Robin type boundary condition, with a weight factor
 // enabling it to implement as a Neumann or Dirichlet boundary condition
 //
@@ -34,9 +36,22 @@ public:
         bndry_x_(bndry_x), bndry_y_(bndry_y), size_(size), weight_(weight) {}
 
   BoundaryCondition(const viewt &ghost_cells, const viewt &bndry_cells,
+                    const cell_coord_function &bndry_x,
+                    const cell_coord_function &bndry_y, const bc_function &bc,
+                    const real size, const BCType type)
+      : ghost_cells_(ghost_cells), bndry_cells_(bndry_cells), bc_(bc),
+        bndry_x_(bndry_x), bndry_y_(bndry_y), size_(size),
+        weight_(type == BCType::Dirichlet ? 1.0 : 0.0) {}
+
+  BoundaryCondition(const viewt &ghost_cells, const viewt &bndry_cells,
                     const real size, const real weight)
       : BoundaryCondition(ghost_cells, bndry_cells, null_coord, null_coord,
                           homogeneous, size, weight) {}
+
+  BoundaryCondition(const viewt &ghost_cells, const viewt &bndry_cells,
+                    const real size, const BCType type)
+      : BoundaryCondition(ghost_cells, bndry_cells, null_coord, null_coord,
+                          homogeneous, size, type) {}
 
   real ghost_cell(const real bndry_val, const real x, const real y,
                   const real time) const noexcept {
