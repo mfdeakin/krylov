@@ -5,6 +5,7 @@
 
 #include "boundary_conds.hpp"
 #include "constants.hpp"
+#include "matrix.hpp"
 #include "mesh.hpp"
 #include "solver.hpp"
 #include "space_disc.hpp"
@@ -46,12 +47,14 @@ TEST(lu_decomp, solvers) {
             {5.0, 6.0, 7.0, 30.0},
             {8.0, 9.0, 20.0, 40.0},
             {11.0, 12.0, 130.0, 160.0}};
-  auto [l, u] = lu_decomp(m1);
+  LUSolver solver(m1.shape()[0]);
+  auto [l, u] = solver.lu_decomp(m1);
   EXPECT_EQ(l.shape()[0], m1.shape()[0]);
   EXPECT_EQ(l.shape()[1], m1.shape()[1]);
   EXPECT_EQ(u.shape()[0], m1.shape()[0]);
   EXPECT_EQ(u.shape()[1], m1.shape()[1]);
-  matrix ltu = dot(l, u);
+  matrix ltu(m1.shape());
+  dot(ltu, l, u);
   for (int i = 0; i < l.shape()[0]; i++) {
     for (int j = 0; j < l.shape()[1]; j++) {
       EXPECT_EQ(ltu(i, j), m1(i, j));
@@ -62,8 +65,9 @@ TEST(lu_decomp, solvers) {
     }
   }
   vector x_expected{{-1.0, 1.0, 2.0, -4.0}};
-  vector b = dot(m1, x_expected);
-  vector x = lu_solve(m1, b);
+  vector b(x_expected.shape());
+  dot(b, m1, x_expected);
+  auto x = solver.solve(m1, b);
   for (int i = 0; i < b.shape()[0]; i++) {
     EXPECT_EQ(x(i), x_expected(i));
   }
@@ -74,10 +78,12 @@ TEST(product, matrix) {
   matrix m2{
       {3.0, 6.0, 9.0, 12.0}, {4.0, 7.0, 10.0, 13.0}, {5.0, 8.0, 11.0, 14.0}};
   matrix expected{{-23.0, -38.0, -53.0, -68.0}, {31.0, 52.0, 73.0, 94.0}};
-  matrix result = dot(m1, m2);
+  matrix result(expected.shape());
+  dot(result, m1, m2);
   vector x{2.0, 4.0, 5.0};
   vector y_expected{-24.0, 30.0};
-  vector y = dot(m1, x);
+  vector y(y_expected.shape());
+  dot(y, m1, x);
   for (int i = 0; i < m1.shape()[0]; i++) {
     EXPECT_EQ(y_expected(i), y(i));
     for (int j = 0; j < m2.shape()[1]; j++) {
