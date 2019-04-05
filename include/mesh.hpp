@@ -227,7 +227,7 @@ public:
   }
   horiz_view bndrycells_top_vel_v() noexcept {
     return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
-                    vel_v_cva_.shape()[0] - 2);
+                    vel_v_cva_.shape()[1] - 2);
   }
   horiz_view bndrycells_bottom_vel_v() noexcept {
     return xt::view(vel_v_cva_, xt::range(1, vel_v_cva_.shape()[0] - 1),
