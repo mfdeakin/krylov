@@ -97,21 +97,81 @@ Mesh construct_mesh_with_hbc(
     std::pair<real, real> corner_2,
     std::function<triple(real, real)> initial_conds) noexcept;
 
-TEST(flux_int, second_order_space_disc) {
+TEST(flux_int_components, second_order_space_disc) {
   constexpr real T0 = 1.0;
   constexpr real u0 = 0.0;
   constexpr real v0 = 0.0;
-  constexpr int cells_x = 32, cells_y = 64;
+  constexpr int cells_x = 256, cells_y = 256;
   constexpr std::pair<real, real> corner_1{0.0, 0.0}, corner_2{1.0, 1.0};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
+  Mesh src(construct_mesh_with_hbc(
+      cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+  Mesh fine(construct_mesh_with_hbc(
+      2 * cells_x, 2 * cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+
+  constexpr real reynolds = q_nan;
+  constexpr real prandtl = q_nan;
+  constexpr real eckert = q_nan;
+  constexpr real diffusion = q_nan;
+  SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+  const auto expected_dx = [](const real x, const real y) {
+    return -T0 * pi * std::sin(pi * x) * std::sin(pi * y);
+  };
+  const auto expected_dy = [](const real x, const real y) {
+    return T0 * pi * std::cos(pi * x) * std::cos(pi * y);
+  };
+
+  for (int i = 0; i < src.cells_x(); i++) {
+    for (int j = 0; j < src.cells_y(); j++) {
+      EXPECT_NEAR(sd.dx_flux(src, i, j),
+                  expected_dx(src.right_x(i), src.median_y(j)), 1e-4);
+      EXPECT_NEAR(
+          sd.dx_flux(fine, 2 * i + 1, 2 * j + 1),
+          expected_dx(fine.right_x(2 * i + 1), fine.median_y(2 * j + 1)), 1e-5);
+
+      EXPECT_NEAR(sd.dy_flux(src, i, j),
+                  expected_dy(src.median_x(i), src.top_y(j)), 1e-4);
+      EXPECT_NEAR(sd.dy_flux(fine, 2 * i + 1, 2 * j + 1),
+                  expected_dy(fine.median_x(2 * i + 1), fine.top_y(2 * j + 1)),
+                  1e-5);
+      // if (sd.dy_flux(src, i, j) != expected_dy &&
+      //     sd.dy_flux(fine, 2 * i + 1, 2 * j + 1) != expected_dy) {
+      //   EXPECT_GT(
+      //       -std::log2(std::abs(
+      //           (sd.dy_flux(src, i, j) - expected_dy) /
+      //           (sd.dy_flux(fine, 2 * i + 1, 2 * j + 1) - expected_dy))),
+      //       2.0 - 1e-6);
+      // }
+    }
+  }
+}
+
+TEST(flux_int_diffusion, second_order_space_disc) {
+  constexpr real T0 = 1.0;
+  constexpr real u0 = 0.0;
+  constexpr real v0 = 0.0;
+  constexpr int cells_x = 512, cells_y = 512;
+  constexpr std::pair<real, real> corner_1{0.0, 0.0}, corner_2{1.0, 1.0};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
   Mesh src(construct_mesh_with_hbc(
       cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
         return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
                       u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
       }));
 
-  constexpr real reynolds = 1.0;
-  constexpr real prandtl = 1.0;
-  constexpr real eckert = 1.0;
+  constexpr real reynolds = 50.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
   {
     // Everything should be 0 in this case
     constexpr real diffusion = 0.0;
@@ -120,12 +180,156 @@ TEST(flux_int, second_order_space_disc) {
       for (int j = 0; j < src.cells_y(); j++) {
         const real x = src.median_x(i);
         const real y = src.median_y(j);
-        const real flux_integral = sd.source_fd(src, i, j);
+        const real flux_integral = sd.flux_integral(src, i, j);
+        // u0 T0 pi cos(2 pi x) y sin(pi y)
+        // + v0 T0 pi x cos(pi x) cos(2 pi y)
+        // + (2 T0 pi^2) / (Re Pr) cos(pi x) sin(pi y)
         EXPECT_EQ(flux_integral,
                   u0 * T0 * pi * std::cos(2.0 * pi * x) * y * std::sin(pi * y) +
-                      diffusion * 2.0 * T0 * pi * pi * std::cos(pi * x) *
-                          std::sin(pi * y));
+                      v0 * T0 * pi * x * std::cos(pi * x) *
+                          std::cos(2.0 * pi * y) +
+                      diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
+                          std::cos(pi * x) * std::sin(pi * y));
       }
+    }
+  }
+  {
+    constexpr real diffusion = 1.0;
+    SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+    for (int i = 0; i < src.cells_x(); i++) {
+      for (int j = 0; j < src.cells_y(); j++) {
+        const real x = src.median_x(i);
+        const real y = src.median_y(j);
+        const real flux_integral = sd.flux_integral(src, i, j);
+        // u0 T0 pi cos(2 pi x) y sin(pi y)
+        // + v0 T0 pi x cos(pi x) cos(2 pi y)
+        // + (2 T0 pi^2) / (Re Pr) cos(pi x) sin(pi y)
+        EXPECT_NEAR(
+            flux_integral,
+            -u0 * T0 * pi * std::cos(2.0 * pi * x) * y * std::sin(pi * y) -
+                v0 * T0 * pi * x * std::cos(pi * x) * std::cos(2.0 * pi * y) -
+                diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
+                    std::cos(pi * x) * std::sin(pi * y),
+            1e-5);
+        EXPECT_EQ(sd.lapl_T_flux_integral(src, i, j), flux_integral);
+      }
+    }
+  }
+}
+
+TEST(flux_int_horiz, second_order_space_disc) {
+  constexpr real T0 = 1.0;
+  constexpr real u0 = 1.0;
+  constexpr real v0 = 0.0;
+  constexpr int cells_x = 512, cells_y = 512;
+  constexpr std::pair<real, real> corner_1{0.0, 0.0}, corner_2{1.0, 1.0};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
+  Mesh src(construct_mesh_with_hbc(
+      cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+
+  constexpr real reynolds = 50.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  constexpr real diffusion = 0.0;
+  SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+  for (int i = 0; i < src.cells_x(); i++) {
+    for (int j = 0; j < src.cells_y(); j++) {
+      const real x = src.median_x(i);
+      const real y = src.median_y(j);
+      const real flux_integral = sd.flux_integral(src, i, j);
+      // u0 T0 pi cos(2 pi x) y sin(pi y)
+      // + v0 T0 pi x cos(pi x) cos(2 pi y)
+      // + (2 T0 pi^2) / (Re Pr) cos(pi x) sin(pi y)
+      EXPECT_NEAR(
+          flux_integral,
+          -u0 * T0 * pi * std::cos(2.0 * pi * x) * y * std::sin(pi * y) -
+              v0 * T0 * pi * x * std::cos(pi * x) * std::cos(2.0 * pi * y) -
+              diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
+                  std::cos(pi * x) * std::sin(pi * y),
+          1e-4);
+    }
+  }
+}
+
+TEST(flux_int_vert, second_order_space_disc) {
+  constexpr real T0 = 1.0;
+  constexpr real u0 = 0.0;
+  constexpr real v0 = 1.0;
+  constexpr int cells_x = 512, cells_y = 512;
+  constexpr std::pair<real, real> corner_1{0.0, 0.0}, corner_2{1.0, 1.0};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
+  Mesh src(construct_mesh_with_hbc(
+      cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+
+  constexpr real reynolds = 50.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  constexpr real diffusion = 0.0;
+  SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+  for (int i = 0; i < src.cells_x(); i++) {
+    for (int j = 0; j < src.cells_y(); j++) {
+      const real x = src.median_x(i);
+      const real y = src.median_y(j);
+      const real flux_integral = sd.flux_integral(src, i, j);
+      // u0 T0 pi cos(2 pi x) y sin(pi y)
+      // + v0 T0 pi x cos(pi x) cos(2 pi y)
+      // + (2 T0 pi^2) / (Re Pr) cos(pi x) sin(pi y)
+      EXPECT_NEAR(
+          flux_integral,
+          -u0 * T0 * pi * std::cos(2.0 * pi * x) * y * std::sin(pi * y) -
+              v0 * T0 * pi * x * std::cos(pi * x) * std::cos(2.0 * pi * y) -
+              diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
+                  std::cos(pi * x) * std::sin(pi * y),
+          1e-4);
+    }
+  }
+}
+
+TEST(flux_int_complete, second_order_space_disc) {
+  constexpr real T0 = 1.0;
+  constexpr real u0 = 2.0;
+  constexpr real v0 = 1.0;
+  constexpr int cells_x = 512, cells_y = 512;
+  constexpr std::pair<real, real> corner_1{0.0, 0.0}, corner_2{1.0, 1.0};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
+  Mesh src(construct_mesh_with_hbc(
+      cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+
+  constexpr real reynolds = 50.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  constexpr real diffusion = 1.0;
+  SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+  for (int i = 0; i < src.cells_x(); i++) {
+    for (int j = 0; j < src.cells_y(); j++) {
+      const real x = src.median_x(i);
+      const real y = src.median_y(j);
+      const real flux_integral = sd.flux_integral(src, i, j);
+      // u0 T0 pi cos(2 pi x) y sin(pi y)
+      // + v0 T0 pi x cos(pi x) cos(2 pi y)
+      // + (2 T0 pi^2) / (Re Pr) cos(pi x) sin(pi y)
+      EXPECT_NEAR(
+          flux_integral,
+          -u0 * T0 * pi * std::cos(2.0 * pi * x) * y * std::sin(pi * y) -
+              v0 * T0 * pi * x * std::cos(pi * x) * std::cos(2.0 * pi * y) -
+              diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
+                  std::cos(pi * x) * std::sin(pi * y),
+          1e-3);
     }
   }
 }
@@ -142,36 +346,38 @@ TEST(flux_int, second_order_space_disc) {
   DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_Temp(),
                                 src.bndrycells_bottom_Temp())
       .apply(0.0);
-  DirichletBC<Mesh::vert_view>(src.ghostcells_left_Temp(),
-                               src.bndrycells_left_Temp())
+  NeumannBC<Mesh::vert_view>(src.ghostcells_left_Temp(),
+                             src.bndrycells_left_Temp())
       .apply(0.0);
-  DirichletBC<Mesh::vert_view>(src.ghostcells_right_Temp(),
-                               src.bndrycells_right_Temp())
+  NeumannBC<Mesh::vert_view>(src.ghostcells_right_Temp(),
+                             src.bndrycells_right_Temp())
       .apply(0.0);
-  DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_u(),
-                                src.bndrycells_top_vel_u())
-      .apply(0.0);
-  DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_u(),
-                                src.bndrycells_bottom_vel_u())
-      .apply(0.0);
+  // The velocity bc isn't homogeneous Neumann or Dirichlet here
+  // DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_u(),
+  //                               src.bndrycells_top_vel_u())
+  //     .apply(0.0);
+  // DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_u(),
+  //                               src.bndrycells_bottom_vel_u())
+  //     .apply(0.0);
   DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_u(),
                                src.bndrycells_left_vel_u())
       .apply(0.0);
   DirichletBC<Mesh::vert_view>(src.ghostcells_right_vel_u(),
                                src.bndrycells_right_vel_u())
       .apply(0.0);
-  DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_v(),
-                                src.bndrycells_top_vel_v())
+  NeumannBC<Mesh::horiz_view>(src.ghostcells_top_vel_v(),
+                              src.bndrycells_top_vel_v())
       .apply(0.0);
-  DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_v(),
-                                src.bndrycells_bottom_vel_v())
+  NeumannBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_v(),
+                              src.bndrycells_bottom_vel_v())
       .apply(0.0);
-  DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_v(),
-                               src.bndrycells_left_vel_v())
-      .apply(0.0);
-  DirichletBC<Mesh::vert_view>(src.ghostcells_right_vel_v(),
-                               src.bndrycells_right_vel_v())
-      .apply(0.0);
+  // The velocity bc isn't homogeneous Neumann or Dirichlet here
+  // DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_v(),
+  //                              src.bndrycells_left_vel_v())
+  //     .apply(0.0);
+  // DirichletBC<Mesh::vert_view>(src.ghostcells_right_vel_v(),
+  //                              src.bndrycells_right_vel_v())
+  //     .apply(0.0);
   return src;
 }
 

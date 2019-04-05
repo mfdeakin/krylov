@@ -19,12 +19,12 @@ public:
   [[nodiscard]] real flux_integral(const Mesh &mesh, int i, int j) const
       noexcept {
     const real x_deriv =
-        (static_cast<SpaceDisc *>(this)->uT_x_flux(mesh, i, j) -
-         static_cast<SpaceDisc *>(this)->uT_x_flux(mesh, i - 1, j)) /
+        (static_cast<const SpaceDisc *>(this)->uT_x_flux(mesh, i, j) -
+         static_cast<const SpaceDisc *>(this)->uT_x_flux(mesh, i - 1, j)) /
         mesh.dx();
     const real y_deriv =
-        (static_cast<SpaceDisc *>(this)->vT_y_flux(mesh, i, j) -
-         static_cast<SpaceDisc *>(this)->vT_y_flux(mesh, i, j - 1)) /
+        (static_cast<const SpaceDisc *>(this)->vT_y_flux(mesh, i, j) -
+         static_cast<const SpaceDisc *>(this)->vT_y_flux(mesh, i, j - 1)) /
         mesh.dy();
 
     return (-x_deriv - y_deriv) + diffusion_ * lapl_T_flux_integral(mesh, i, j);
@@ -33,12 +33,12 @@ public:
   [[nodiscard]] real lapl_T_flux_integral(const Mesh &mesh, int i, int j) const
       noexcept {
     const real x2_deriv =
-        (static_cast<SpaceDisc *>(this)->dx_flux(mesh, i, j) -
-         static_cast<SpaceDisc *>(this)->dx_flux(mesh, i - 1, j)) /
+        (static_cast<const SpaceDisc *>(this)->dx_flux(mesh, i, j) -
+         static_cast<const SpaceDisc *>(this)->dx_flux(mesh, i - 1, j)) /
         mesh.dx();
     const real y2_deriv =
-        (static_cast<SpaceDisc *>(this)->dy_flux(mesh, i, j) -
-         static_cast<SpaceDisc *>(this)->dy_flux(mesh, i, j - 1)) /
+        (static_cast<const SpaceDisc *>(this)->dy_flux(mesh, i, j) -
+         static_cast<const SpaceDisc *>(this)->dy_flux(mesh, i, j - 1)) /
         mesh.dy();
     return (x2_deriv + y2_deriv) * inv_rp_;
   }
@@ -75,8 +75,8 @@ public:
   [[nodiscard]] constexpr real Dx_p1(const Mesh &mesh, int i, int j)
       const noexcept {
     if (i < mesh.cells_x()) {
-      return (mesh.vel_u(i + 1, j) / 2.0 - this->inv_rp_ * mesh.cells_x()) *
-             mesh.cells_x();
+      return (mesh.vel_u(i + 1, j) / 2.0 - this->inv_rp_ / mesh.dx()) /
+             mesh.dx();
     } else {
       return 0.0;
     }
@@ -84,14 +84,14 @@ public:
 
   [[nodiscard]] constexpr real Dx_0(const Mesh &mesh, int i, int j)
       const noexcept {
-    return 2.0 * this->inv_rp_ * mesh.cells_x() * mesh.cells_x();
+    return 2.0 * this->inv_rp_ / (mesh.dx() * mesh.dx());
   }
 
   [[nodiscard]] constexpr real Dx_m1(const Mesh &mesh, int i, int j)
       const noexcept {
     if (i >= 0) {
-      return (-mesh.vel_u(i - 1, j) / 2.0 - this->inv_rp_ * mesh.cells_x()) *
-             mesh.cells_x();
+      return (-mesh.vel_u(i - 1, j) / 2.0 - this->inv_rp_ / mesh.dx()) /
+             mesh.dx();
     } else {
       return 0.0;
     }
@@ -100,8 +100,8 @@ public:
   [[nodiscard]] constexpr real Dy_p1(const Mesh &mesh, int i, int j)
       const noexcept {
     if (j < mesh.cells_y()) {
-      return (mesh.vel_v(i, j + 1) / 2.0 - this->inv_rp_ * mesh.cells_y()) *
-             mesh.cells_y();
+      return (mesh.vel_v(i, j + 1) / 2.0 - this->inv_rp_ / mesh.dy()) /
+             mesh.dy();
     } else {
       return 0.0;
     }
@@ -109,14 +109,14 @@ public:
 
   [[nodiscard]] constexpr real Dy_0(const Mesh &mesh, int i, int j)
       const noexcept {
-    return 2.0 * this->inv_rp_ * mesh.cells_y() * mesh.cells_y();
+    return 2.0 * this->inv_rp_ / (mesh.dy() * mesh.dy());
   }
 
   [[nodiscard]] constexpr real Dy_m1(const Mesh &mesh, int i, int j)
       const noexcept {
     if (j >= 0) {
-      return (-mesh.vel_v(i, j - 1) / 2.0 - this->inv_rp_ * mesh.cells_y()) *
-             mesh.cells_y();
+      return (-mesh.vel_v(i, j - 1) / 2.0 - this->inv_rp_ / mesh.dy()) /
+             mesh.dy();
     } else {
       return 0.0;
     }
@@ -141,13 +141,13 @@ public:
   // Centered FV approximation to dT/dx_{i+1/2, j}
   [[nodiscard]] constexpr real dx_flux(const Mesh &mesh, const int i,
                                        const int j) const noexcept {
-    return (mesh.Temp(i + 1, j) - mesh.Temp(i, j)) * mesh.cells_x();
+    return (mesh.Temp(i + 1, j) - mesh.Temp(i, j)) / mesh.dx();
   }
 
   // Centered FV approximation to dT/dy_{i, j+1/2}
   [[nodiscard]] constexpr real dy_flux(const Mesh &mesh, const int i,
                                        const int j) const noexcept {
-    return (mesh.Temp(i, j + 1) - mesh.Temp(i, j)) * mesh.cells_y();
+    return (mesh.Temp(i, j + 1) - mesh.Temp(i, j)) / mesh.dy();
   }
 
   // Uses the finite difference (FD) approximations to the velocity derivatives
