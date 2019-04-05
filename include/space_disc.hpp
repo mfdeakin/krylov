@@ -123,37 +123,37 @@ public:
   }
 
   // Centered FV approximation to (u T)_{i+1/2, j}
-  [[nodiscard]] constexpr real uT_x_flux(const Mesh &mesh, const int i,
-                                         const int j) const noexcept {
+  [[nodiscard]] real uT_x_flux(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.Temp(i, j) * mesh.vel_u(i, j) +
             mesh.Temp(i + 1, j) * mesh.vel_u(i + 1, j)) /
            2.0;
   }
 
   // Centered FV approximation to T_{i, j+1/2}
-  [[nodiscard]] constexpr real vT_y_flux(const Mesh &mesh, const int i,
-                                         const int j) const noexcept {
+  [[nodiscard]] real vT_y_flux(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.Temp(i, j) * mesh.vel_v(i, j) +
             mesh.Temp(i, j + 1) * mesh.vel_v(i, j + 1)) /
            2.0;
   }
 
   // Centered FV approximation to dT/dx_{i+1/2, j}
-  [[nodiscard]] constexpr real dx_flux(const Mesh &mesh, const int i,
-                                       const int j) const noexcept {
+  [[nodiscard]] real dx_flux(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.Temp(i + 1, j) - mesh.Temp(i, j)) / mesh.dx();
   }
 
   // Centered FV approximation to dT/dy_{i, j+1/2}
-  [[nodiscard]] constexpr real dy_flux(const Mesh &mesh, const int i,
-                                       const int j) const noexcept {
+  [[nodiscard]] real dy_flux(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.Temp(i, j + 1) - mesh.Temp(i, j)) / mesh.dy();
   }
 
   // Uses the finite difference (FD) approximations to the velocity derivatives
   // to approximate the source term
-  [[nodiscard]] constexpr real source_fd(const Mesh &mesh, const int i,
-                                         const int j) const noexcept {
+  [[nodiscard]] real source_fd(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     const real u_dx = du_dx_fd(mesh, i, j);
     const real v_dy = dv_dy_fd(mesh, i, j);
     const real u_dy = du_dy_fd(mesh, i, j);
@@ -165,26 +165,26 @@ public:
   }
 
   // Centered FD approximation to du/dx_{i, j}
-  [[nodiscard]] constexpr real du_dx_fd(const Mesh &mesh, const int i,
-                                        const int j) const noexcept {
+  [[nodiscard]] real du_dx_fd(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.vel_u(i + 1, j) - mesh.vel_u(i - 1, j)) / (2.0 * mesh.dx());
   }
 
   // Centered FD approximation to du/dy_{i, j}
-  [[nodiscard]] constexpr real du_dy_fd(const Mesh &mesh, const int i,
-                                        const int j) const noexcept {
+  [[nodiscard]] real du_dy_fd(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.vel_u(i, j + 1) - mesh.vel_u(i, j - 1)) / (2.0 * mesh.dy());
   }
 
   // Centered FD approximation to dv/dx_{i, j}
-  [[nodiscard]] constexpr real dv_dx_fd(const Mesh &mesh, const int i,
-                                        const int j) const noexcept {
+  [[nodiscard]] real dv_dx_fd(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.vel_v(i + 1, j) - mesh.vel_v(i - 1, j)) / (2.0 * mesh.dx());
   }
 
   // Centered FD approximation to dv/dy_{i, j}
-  [[nodiscard]] constexpr real dv_dy_fd(const Mesh &mesh, const int i,
-                                        const int j) const noexcept {
+  [[nodiscard]] real dv_dy_fd(const Mesh &mesh, const int i, const int j)
+      const noexcept {
     return (mesh.vel_v(i, j + 1) - mesh.vel_v(i, j - 1)) / (2.0 * mesh.dy());
   }
 

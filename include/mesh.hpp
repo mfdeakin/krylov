@@ -256,10 +256,10 @@ public:
     return vel_v_cva_;
   }
 
-  int cells_x() const noexcept {
+  constexpr int cells_x() const noexcept {
     return temp_cva_.shape()[0] - 2 * ghost_cells;
   }
-  int cells_y() const noexcept {
+  constexpr int cells_y() const noexcept {
     return temp_cva_.shape()[1] - 2 * ghost_cells;
   }
 

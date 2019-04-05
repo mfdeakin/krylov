@@ -25,6 +25,9 @@ template <typename viewt> class BoundaryCondition {
 public:
   // A boundary condition function takes the x, y, and time values,
   // and returns the value at the interface
+  //
+  // Note that the boundary conditions lifetime is dependent on the lifetime of
+  // the mesh its applied to
   using bc_function = std::function<real(real, real, real)>;
   using cell_coord_function = std::function<real(int)>;
 
@@ -66,6 +69,12 @@ public:
       const real gc_val = ghost_cell(bndry_cells_(idx), x, y, time);
       ghost_cells_(idx) = gc_val;
     }
+  }
+
+  real implicit_euler_term() const noexcept {
+    // Returns the term for the ghost cell
+    // Note that the term for the boundary cell should always be 1.0
+    return 2.0 * weight_ - 1.0;
   }
 
 protected:
