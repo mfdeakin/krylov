@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 
 #include "xtensor/xstrided_view.hpp"
 #include "xtensor/xtensor.hpp"
@@ -11,8 +12,8 @@
 
 #include "constants.hpp"
 
-static real homogeneous(real, real, real) { return 0.0; }
-static real null_coord(int) { return 0.0; }
+real homogeneous(real, real, real) { return 0.0; }
+real null_coord(int) { return 0.0; }
 
 enum class BCType { Dirichlet, Neumann };
 
@@ -21,7 +22,9 @@ enum class BCType { Dirichlet, Neumann };
 //
 // Due to the xview having too many possible types, template the boundary
 // conditions implementation on it
-template <typename viewt> class BoundaryCondition {
+template <typename viewt>
+class BoundaryCondition
+    : public std::enable_shared_from_this<BoundaryCondition<viewt>> {
 public:
   // A boundary condition function takes the x, y, and time values,
   // and returns the value at the interface
@@ -63,7 +66,7 @@ public:
   }
 
   void apply(const real time) noexcept {
-    for (int idx = 0; idx < bndry_cells_.shape()[0]; idx++) {
+    for (unsigned long idx = 0; idx < bndry_cells_.shape()[0]; idx++) {
       const real x = bndry_x_(idx);
       const real y = bndry_y_(idx);
       const real gc_val = ghost_cell(bndry_cells_(idx), x, y, time);

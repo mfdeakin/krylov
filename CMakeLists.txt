@@ -23,3 +23,5 @@ set_target_properties(krylov PROPERTIES
 add_executable(krylov_tester ./src/test.cpp)
 target_link_libraries(krylov_tester krylov_int gtest pthread)
 add_test(krylov_test krylov_tester)
+
+configure_file(./scripts/prob1.py prob1.py COPYONLY)

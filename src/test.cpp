@@ -1,7 +1,9 @@
 
+#include <chrono>
 #include <cmath>
-#include <gtest/gtest.h>
 #include <random>
+
+#include <gtest/gtest.h>
 
 #include "boundary_conds.hpp"
 #include "constants.hpp"
@@ -9,6 +11,7 @@
 #include "mesh.hpp"
 #include "solver.hpp"
 #include "space_disc.hpp"
+#include "time_disc.hpp"
 
 TEST(mesh, cell_overlap) {
   constexpr int cells_x = 32, cells_y = 32;
@@ -42,6 +45,123 @@ TEST(mesh, cell_overlap) {
   }
 }
 
+ImplicitEuler<SecondOrderCentered, LUSolver>
+default_ie_lu_solver(const int cells_x, const int cells_y) {
+  constexpr real reynolds = 25.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  std::pair<real, real> c1{0.0, 0.0};
+  std::pair<real, real> c2{40.0, 1.0};
+  SecondOrderCentered space_disc(1.0, reynolds, prandtl, eckert);
+
+  std::pair<BCType, std::function<real(real, real, real)>> def_bc{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> left_temp{
+      BCType::Dirichlet,
+      [](const real, const real y, const real) { return y; }};
+  std::pair<BCType, std::function<real(real, real, real)>> bottom_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> top_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 1.0; }};
+
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim(
+      c1, c2, cells_x, cells_y,
+      [](const real x, const real y) {
+        constexpr real avg_u = 3.0;
+        return triple{0.0, 6.0 * avg_u * y * (1.0 - y), 0.0};
+      },
+      space_disc, bottom_temp, top_temp, left_temp, def_bc, def_bc, def_bc,
+      def_bc, def_bc, def_bc, def_bc, def_bc, def_bc);
+  return sim;
+}
+
+TEST(cell_indices, implicit_euler) {
+  constexpr int cells_x = 18, cells_y = 8;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  // Better would be to ensure that the cell indices are all within range and
+  // unique, but this is easier for now
+  int expected_idx = 0;
+  for (int j = 0; j < cells_y; j++) {
+    EXPECT_EQ(sim.cell_idx(-1, j), expected_idx);
+    expected_idx++;
+  }
+  for (int i = 0; i < cells_x; i++) {
+    for (int j = -1; j <= cells_y; j++) {
+      EXPECT_EQ(sim.cell_idx(i, j), expected_idx);
+      expected_idx++;
+    }
+  }
+  for (int j = 0; j < cells_y; j++) {
+    EXPECT_EQ(sim.cell_idx(cells_x, j), expected_idx);
+    expected_idx++;
+  }
+}
+
+TEST(solve_20_10, implicit_euler) {
+  constexpr int cells_x = 18, cells_y = 8;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(solve_40_20, implicit_euler) {
+  constexpr int cells_x = 38, cells_y = 18;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(solve_80_40, implicit_euler) {
+  constexpr int cells_x = 78, cells_y = 38;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
 TEST(lu_decomp, solvers) {
   matrix m1{{2.0, 3.0, 4.0, 20.0},
             {5.0, 6.0, 7.0, 30.0},
@@ -55,8 +175,8 @@ TEST(lu_decomp, solvers) {
   EXPECT_EQ(u.shape()[1], m1.shape()[1]);
   matrix ltu(m1.shape());
   dot(ltu, l, u);
-  for (int i = 0; i < l.shape()[0]; i++) {
-    for (int j = 0; j < l.shape()[1]; j++) {
+  for (unsigned long i = 0; i < l.shape()[0]; i++) {
+    for (unsigned long j = 0; j < l.shape()[1]; j++) {
       EXPECT_EQ(ltu(i, j), m1(i, j));
       if (j > i) {
         EXPECT_EQ(l(i, j), 0.0);
@@ -68,7 +188,7 @@ TEST(lu_decomp, solvers) {
   vector b(x_expected.shape());
   dot(b, m1, x_expected);
   auto x = solver.solve(m1, b);
-  for (int i = 0; i < b.shape()[0]; i++) {
+  for (unsigned long i = 0; i < b.shape()[0]; i++) {
     EXPECT_EQ(x(i), x_expected(i));
   }
 }
@@ -84,9 +204,9 @@ TEST(product, matrix) {
   vector y_expected{-24.0, 30.0};
   vector y(y_expected.shape());
   dot(y, m1, x);
-  for (int i = 0; i < m1.shape()[0]; i++) {
+  for (unsigned long i = 0; i < m1.shape()[0]; i++) {
     EXPECT_EQ(y_expected(i), y(i));
-    for (int j = 0; j < m2.shape()[1]; j++) {
+    for (unsigned long j = 0; j < m2.shape()[1]; j++) {
       EXPECT_EQ(expected(i, j), result(i, j));
     }
   }
@@ -353,6 +473,8 @@ TEST(flux_int_complete, second_order_space_disc) {
                              src.bndrycells_right_Temp())
       .apply(0.0);
   // The velocity bc isn't homogeneous Neumann or Dirichlet here
+  // Physically the horizontal velocity in the top and bottom ghost cells is
+  // degenerate
   // DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_u(),
   //                               src.bndrycells_top_vel_u())
   //     .apply(0.0);
@@ -372,6 +494,7 @@ TEST(flux_int_complete, second_order_space_disc) {
                               src.bndrycells_bottom_vel_v())
       .apply(0.0);
   // The velocity bc isn't homogeneous Neumann or Dirichlet here
+  // This velocity component is also degenerate in these ghost cells
   // DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_v(),
   //                              src.bndrycells_left_vel_v())
   //     .apply(0.0);
