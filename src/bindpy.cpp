@@ -218,11 +218,12 @@ PYBIND11_MODULE(krylov, module) {
                                                              "_TimeDiscBase")
       .def("mesh", &TimeDisc<SecondOrderCentered>::mesh)
       .def("cur_time", &TimeDisc<SecondOrderCentered>::cur_time);
+  // The Implicit Euler Solvers
   py::class_<ImplicitEuler<SecondOrderCentered, LUSolver>,
              std::shared_ptr<ImplicitEuler<SecondOrderCentered, LUSolver>>,
              TimeDisc<SecondOrderCentered>>
-      ie_solver(module, "ImplicitEulerLUSolver");
-  ie_solver
+      ie_lu_solver(module, "ImplicitEulerLUSolver");
+  ie_lu_solver
       .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
                     const size_t, const size_t,
                     std::function<triple(real, real)>,
@@ -239,44 +240,36 @@ PYBIND11_MODULE(krylov, module) {
                     std::pair<BCType, std::function<real(real, real, real)>>,
                     std::pair<BCType, std::function<real(real, real, real)>>,
                     std::pair<BCType, std::function<real(real, real, real)>>>())
-      .def("problem_configuration",
-           []() {
-             const std::pair<real, real> c1{0.0, 0.0}, c2{1.0, 1.0};
-             const size_t cells_x = 20, cells_y = 10;
-             auto initial = [](real x, real y) {
-               const real Temp = std::cos(pi * x) * std::sin(pi * y);
-               const real u_vel = y * std::sin(pi * x);
-               const real v_vel = x * std::cos(pi * y);
-               return std::tuple{Temp, u_vel, v_vel};
-             };
-             constexpr real reynolds = 25.0;
-             constexpr real prandtl = 0.7;
-             constexpr real eckert = 0.1;
-             constexpr real diffusion = 1.0;
-             const SecondOrderCentered space(diffusion, reynolds, prandtl,
-                                             eckert);
-             const std::pair<BCType, std::function<real(real, real, real)>>
-                 hg_default{BCType::Dirichlet,
-                            [](real, real, real) { return 0.0; }};
-
-             const std::pair<BCType, std::function<real(real, real, real)>>
-                 bottom(hg_default);
-             const std::pair<BCType, std::function<real(real, real, real)>> top{
-                 BCType::Dirichlet, [](real, real, real) { return 1.0; }};
-             const std::pair<BCType, std::function<real(real, real, real)>>
-                 left{BCType::Dirichlet, [](real, real y, real) { return y; }};
-             const std::pair<BCType, std::function<real(real, real, real)>>
-                 right(hg_default);
-
-             return ImplicitEuler<SecondOrderCentered, LUSolver>(
-                 c1, c2, cells_x, cells_y, initial, space, left, right, top,
-                 bottom, hg_default, hg_default, hg_default, hg_default,
-                 hg_default, hg_default, hg_default, hg_default);
-           })
       .def("timestep", &ImplicitEuler<SecondOrderCentered, LUSolver>::timestep)
       .def("system", &ImplicitEuler<SecondOrderCentered, LUSolver>::sys)
       .def("solution", &ImplicitEuler<SecondOrderCentered, LUSolver>::sol)
       .def("delta", &ImplicitEuler<SecondOrderCentered, LUSolver>::delta);
+  py::class_<ImplicitEuler<SecondOrderCentered, GMRESSolver>,
+             std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESSolver>>,
+             TimeDisc<SecondOrderCentered>>
+      ie_gmres_solver(module, "ImplicitEulerGMRESSolver");
+  ie_gmres_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESSolver>::timestep)
+      .def("system", &ImplicitEuler<SecondOrderCentered, GMRESSolver>::sys)
+      .def("solution", &ImplicitEuler<SecondOrderCentered, GMRESSolver>::sol)
+      .def("delta", &ImplicitEuler<SecondOrderCentered, GMRESSolver>::delta);
 
   py::class_<matrix> matrix_obj(module, "Matrix");
   matrix_obj.def(py::init<matrix::shape_type>())
