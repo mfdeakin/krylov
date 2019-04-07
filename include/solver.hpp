@@ -112,41 +112,6 @@ protected:
   vector partial;
 };
 
-class TriDiagSolver : public Solver {
-public:
-  explicit TriDiagSolver(unsigned long sys_size)
-      : Solver(sys_size), u_diag(vector::shape_type{sys_size - 1}) {}
-
-  const vector &solve(const matrix &system, const vector &sol) {
-    assert(system(0, 0) != 0.0);
-    assert(system.shape()[0] == diagonal.shape()[0]);
-    assert(system.shape()[1] == diagonal.shape()[0]);
-    assert(sol.shape()[0] == diagonal.shape()[0]);
-    vars(0) = sol(0) / system(0, 0);
-    u_diag(0) = system(0, 1) / system(0, 0);
-    // Forward substitution to clear the lower diagonal
-    for (unsigned long i = 1; i < vars.shape()[0]; i++) {
-      // We're subtracting system(i, i - 1) * prev_row from this row
-      // Then normalizing so that the diagonal of this row is 1.0
-      const real diag = system(i, i) - u_diag(i - 1) * system(i, i - 1);
-      assert(diag != 0.0);
-      vars(i) = (sol(i) - vars(i - 1) * system(i, i - 1)) / diag;
-      if (i + 1 < vars.shape()[0]) {
-        // Normalize the upper diagonal as well
-        u_diag(i) = system(i, i + 1) / diag;
-      }
-    }
-    // Now the back substitution
-    for (unsigned long i = u_diag.shape()[0] - 1; i < u_diag.shape()[0]; i--) {
-      vars(i) -= vars(i + 1) * u_diag(i);
-    }
-    return vars;
-  }
-
-protected:
-  vector u_diag;
-};
-
 template <unsigned int num_iters> class GMRESSolver : public Solver {
 public:
   explicit GMRESSolver(unsigned long sys_size)
@@ -270,6 +235,88 @@ protected:
   std::vector<vector> subspace;
   matrix H;
   LUSolver reduced_solver;
+};
+
+class SparseTriDiagSolver : public Solver {
+public:
+  explicit SparseTriDiagSolver(unsigned long sys_size)
+      : Solver(sys_size), u_diag(vector::shape_type{sys_size - 1}) {}
+
+  const vector &solve(const matrix &diags, const vector &sol) {
+    assert(diags(0, 0) != 0.0);
+    assert(diags.shape()[0] == diagonal.shape()[0]);
+    assert(diags.shape()[1] == 3);
+    assert(sol.shape()[0] == diagonal.shape()[0]);
+    vars(0) = sol(0) / diags(0, 0);
+    u_diag(0) = diags(0, 1) / diags(0, 0);
+    // Forward substitution to clear the lower diagonal
+    for (unsigned long i = 1; i < vars.shape()[0]; i++) {
+      // We're subtracting diags(i, i - 1) * prev_row from this row
+      // Then normalizing so that the diagonal of this row is 1.0
+      const real diag = diags(i, 1) - u_diag(i - 1) * diags(i, 0);
+      assert(diag != 0.0);
+      vars(i) = (sol(i) - vars(i - 1) * diags(i, 0)) / diag;
+      if (i + 1 < vars.shape()[0]) {
+        // Normalize the upper diagonal as well
+        u_diag(i) = diags(i, 2) / diag;
+      }
+    }
+    // Now the back substitution
+    for (unsigned long i = u_diag.shape()[0] - 1; i < u_diag.shape()[0]; i--) {
+      vars(i) -= vars(i + 1) * u_diag(i);
+    }
+    return vars;
+  }
+
+protected:
+  vector u_diag;
+};
+
+template <unsigned int num_iters>
+class GMRESTDPSolver : public GMRESSolver<num_iters> {
+public:
+  using Parent = GMRESSolver<num_iters>;
+
+  explicit GMRESTDPSolver(unsigned long sys_size)
+      : Parent(sys_size), td(sys_size) {}
+
+protected:
+  SparseTriDiagSolver td;
+};
+
+class TriDiagSolver : public Solver {
+public:
+  explicit TriDiagSolver(unsigned long sys_size)
+      : Solver(sys_size), u_diag(vector::shape_type{sys_size - 1}) {}
+
+  const vector &solve(const matrix &system, const vector &sol) {
+    assert(system(0, 0) != 0.0);
+    assert(system.shape()[0] == diagonal.shape()[0]);
+    assert(system.shape()[1] == diagonal.shape()[0]);
+    assert(sol.shape()[0] == diagonal.shape()[0]);
+    vars(0) = sol(0) / system(0, 0);
+    u_diag(0) = system(0, 1) / system(0, 0);
+    // Forward substitution to clear the lower diagonal
+    for (unsigned long i = 1; i < vars.shape()[0]; i++) {
+      // We're subtracting system(i, i - 1) * prev_row from this row
+      // Then normalizing so that the diagonal of this row is 1.0
+      const real diag = system(i, i) - u_diag(i - 1) * system(i, i - 1);
+      assert(diag != 0.0);
+      vars(i) = (sol(i) - vars(i - 1) * system(i, i - 1)) / diag;
+      if (i + 1 < vars.shape()[0]) {
+        // Normalize the upper diagonal as well
+        u_diag(i) = system(i, i + 1) / diag;
+      }
+    }
+    // Now the back substitution
+    for (unsigned long i = u_diag.shape()[0] - 1; i < u_diag.shape()[0]; i--) {
+      vars(i) -= vars(i + 1) * u_diag(i);
+    }
+    return vars;
+  }
+
+protected:
+  vector u_diag;
 };
 
 #endif // _SOLVER_HPP_
