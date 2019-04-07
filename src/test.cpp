@@ -101,6 +101,59 @@ TEST(cell_indices, implicit_euler) {
   }
 }
 
+TEST(arnoldi, gmres) {
+  constexpr unsigned long problem_size = 10;
+  matrix A(matrix::shape_type{problem_size, problem_size});
+  vector b(vector::shape_type{problem_size});
+  for (unsigned long i = 0; i < A.shape()[0]; i++) {
+    b(i) = 0.0;
+    for (unsigned long j = 0; j < A.shape()[1]; j++) {
+      A(i, j) = 0.0;
+    }
+  }
+  b(4) = 1.0;
+  b(5) = 5.0;
+  b(6) = 1.0;
+  for (unsigned long i = 0; i < A.shape()[0]; i++) {
+    A(i, i) = -2.0;
+    if (i < A.shape()[0] - 1) {
+      A(i + 1, i) = 1.0;
+      A(i, i + 1) = 1.0;
+    }
+  }
+  GMRESSolver test(10);
+  test.initial_subspace(b);
+  {
+    const vector &check = test.subspace_vector(0);
+    for (unsigned long i = 0; i < problem_size; i++) {
+      EXPECT_NEAR(check(i), b(i) * std::sqrt(3) / 9.0, 1e-15);
+    }
+  }
+  {
+    const real h10 = test.add_arnoldi(A);
+    EXPECT_NEAR(h10, 2.0 * std::sqrt(278) / 27.0, 1e-15);
+    const vector &check = test.subspace_vector(1);
+    const real scale = std::sqrt(3.0 * 278) / 5004.0;
+    const vector expected_1{0.0,   0.0,   0.0,  27.0, 115.0,
+                            -46.0, 115.0, 27.0, 0.0,  0.0};
+    for (unsigned long i = 0; i < problem_size; i++) {
+      EXPECT_NEAR(check(i), scale * expected_1(i), 1e-15);
+    }
+  }
+  {
+    const real h21 = test.add_arnoldi(A);
+    EXPECT_NEAR(h21, 3.0 * std::sqrt(2373.0) / 139.0, 1e-15);
+    const vector &check = test.subspace_vector(2);
+    const real scale = std::sqrt(278.0 * 791.0) / 879592.0;
+    const vector expected_2{0.0,   0.0,    278.0,  1265.0, -275.0,
+                            110.0, -275.0, 1265.0, 278.0,  0.0};
+    for (unsigned long i = 0; i < problem_size; i++) {
+      EXPECT_NEAR(check(i) / scale, expected_2(i), 2e-12);
+    }
+  }
+  { test.solve(A, b); }
+}
+
 TEST(solve_20_10, implicit_euler) {
   constexpr int cells_x = 18, cells_y = 8;
   ImplicitEuler<SecondOrderCentered, LUSolver> sim =
@@ -111,47 +164,7 @@ TEST(solve_20_10, implicit_euler) {
   while (delta > 1e-9) {
     delta = sim.timestep(0.25);
     num_ts++;
-    std::cout << delta << " delta" << std::endl;
-  }
-  auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Time to steady state: "
-            << std::chrono::duration_cast<std::chrono::microseconds>(end -
-                                                                     start)
-                   .count()
-            << " us; " << num_ts << " iterations; " << delta << " final delta"
-            << std::endl;
-}
-
-TEST(solve_40_20, implicit_euler) {
-  constexpr int cells_x = 38, cells_y = 18;
-  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
-      default_ie_lu_solver(cells_x, cells_y);
-  real delta = std::numeric_limits<real>::infinity();
-  auto start = std::chrono::high_resolution_clock::now();
-  int num_ts = 0;
-  while (delta > 1e-9) {
-    delta = sim.timestep(0.25);
-    num_ts++;
-  }
-  auto end = std::chrono::high_resolution_clock::now();
-  std::cout << "Time to steady state: "
-            << std::chrono::duration_cast<std::chrono::microseconds>(end -
-                                                                     start)
-                   .count()
-            << " us; " << num_ts << " iterations; " << delta << " final delta"
-            << std::endl;
-}
-
-TEST(solve_80_40, implicit_euler) {
-  constexpr int cells_x = 78, cells_y = 38;
-  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
-      default_ie_lu_solver(cells_x, cells_y);
-  real delta = std::numeric_limits<real>::infinity();
-  auto start = std::chrono::high_resolution_clock::now();
-  int num_ts = 0;
-  while (delta > 1e-9) {
-    delta = sim.timestep(0.25);
-    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
   }
   auto end = std::chrono::high_resolution_clock::now();
   std::cout << "Time to steady state: "
