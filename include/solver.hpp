@@ -185,12 +185,21 @@ public:
     std::swap(H, new_H);
   }
 
-  real add_arnoldi(const matrix &system) {
+  // The compiler should be able to inline this function, so not using static
+  // polymorphism here shouldn't terribly hurt performance
+  virtual real add_arnoldi(const matrix &system) {
     assert(subspace.size() > 0);
     vector next(vector::shape_type{vars.shape()[0]});
     dot(next, system, *(subspace.end() - 1));
     const unsigned long j = subspace.size() - 1;
     // Apply Gram-Schmidt to compute the orthogonal component
+    gram_schmidt(next, subspace);
+    subspace.push_back(next);
+    return H(j + 1, j);
+  }
+
+  vector &gram_schmidt(vector &next, const std::vector<vector> &subspace) {
+    const unsigned long j = subspace.size() - 1;
     for (unsigned long i = 0; i <= j; i++) {
       const vector &v = subspace[i];
       assert(i < H.shape()[0]);
@@ -199,14 +208,11 @@ public:
       // All of the vectors in our subspace are orthogonal to each other, so
       // hij doesn't change as we subtract components off Thus, to avoid
       // repeating work, store it here
-      for (unsigned long k = 0; k < v.shape()[0]; k++) {
-        next(k) -= H(i, j) * v(k);
-      }
+      next -= H(i, j) * v;
     }
 
     H(j + 1, j) = normalize(next);
-    subspace.push_back(next);
-    return H(j + 1, j);
+    return next;
   }
 
   // A nicer version which doesn't assume how many iterations we're doing
@@ -278,10 +284,35 @@ public:
   using Parent = GMRESSolver<num_iters>;
 
   explicit GMRESTDPSolver(unsigned long sys_size)
-      : Parent(sys_size), td(sys_size) {}
+      : Parent(sys_size), td(sys_size),
+        sparse_tdiags(matrix::shape_type{sys_size, 3}),
+        next_unp(vector::shape_type{sys_size}) {}
+
+  const vector &solve(const matrix &system, const vector &sol) {
+    // We need to initialize the sparse_tdiags matrix for preconditioning
+    for (int i = 0; i < system.shape()[0]; i++) {
+      sparse_tdiags(i, 0) = system(i, i - 1);
+      sparse_tdiags(i, 1) = system(i, i);
+      sparse_tdiags(i, 2) = system(i, i + 1);
+    }
+		Parent::solve(system, sol);
+  }
+
+  virtual real add_arnoldi(const matrix &system) {
+    assert(subspace.size() > 0);
+    dot(next_unp, system, *(this->subspace.end() - 1));
+    vector next = td.solve(sparse_tdiags, next_unp);
+    const unsigned long j = this->subspace.size() - 1;
+    // Apply Gram-Schmidt to compute the orthogonal component
+    gram_schmidt(next, this->subspace);
+    this->subspace.push_back(next);
+    return this->H(j + 1, j);
+  }
 
 protected:
   SparseTriDiagSolver td;
+  matrix sparse_tdiags;
+  vector next_unp;
 };
 
 class TriDiagSolver : public Solver {
