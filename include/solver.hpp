@@ -249,12 +249,15 @@ public:
       : Solver(sys_size), u_diag(vector::shape_type{sys_size - 1}) {}
 
   const vector &solve(const matrix &diags, const vector &sol) {
+    // diags(i, 0) is the lower diagonal entry on row i, if this entry exists
+    // diags(i, 1) is the diagonal entry on row i, it always exists
+    // diags(i, 2) is the upper diagonal entry on row i, if this entry exists
     assert(diags(0, 0) != 0.0);
-    assert(diags.shape()[0] == diagonal.shape()[0]);
+    assert(diags.shape()[0] == u_diag.shape()[0] + 1);
     assert(diags.shape()[1] == 3);
-    assert(sol.shape()[0] == diagonal.shape()[0]);
-    vars(0) = sol(0) / diags(0, 0);
-    u_diag(0) = diags(0, 1) / diags(0, 0);
+    assert(sol.shape()[0] == u_diag.shape()[0] + 1);
+    vars(0) = sol(0) / diags(0, 1);
+    u_diag(0) = diags(0, 2) / diags(0, 1);
     // Forward substitution to clear the lower diagonal
     for (unsigned long i = 1; i < vars.shape()[0]; i++) {
       // We're subtracting diags(i, i - 1) * prev_row from this row
@@ -295,11 +298,11 @@ public:
       sparse_tdiags(i, 1) = system(i, i);
       sparse_tdiags(i, 2) = system(i, i + 1);
     }
-		Parent::solve(system, sol);
+    Parent::solve(system, sol);
   }
 
   virtual real add_arnoldi(const matrix &system) {
-    assert(subspace.size() > 0);
+    assert(this->subspace.size() > 0);
     dot(next_unp, system, *(this->subspace.end() - 1));
     vector next = td.solve(sparse_tdiags, next_unp);
     const unsigned long j = this->subspace.size() - 1;
@@ -322,9 +325,9 @@ public:
 
   const vector &solve(const matrix &system, const vector &sol) {
     assert(system(0, 0) != 0.0);
-    assert(system.shape()[0] == diagonal.shape()[0]);
-    assert(system.shape()[1] == diagonal.shape()[0]);
-    assert(sol.shape()[0] == diagonal.shape()[0]);
+    assert(system.shape()[0] == u_diag.shape()[0] + 1);
+    assert(system.shape()[1] == u_diag.shape()[0] + 1);
+    assert(sol.shape()[0] == u_diag.shape()[0] + 1);
     vars(0) = sol(0) / system(0, 0);
     u_diag(0) = system(0, 1) / system(0, 0);
     // Forward substitution to clear the lower diagonal

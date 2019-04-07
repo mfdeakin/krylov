@@ -136,6 +136,31 @@ TEST(tridiag, solvers) {
   }
 }
 
+TEST(sparsetridiag, solvers) {
+  constexpr unsigned long size = 10;
+  const auto [A, b] = simple_test(size);
+  matrix Asparse(matrix::shape_type{A.shape()[0], 3});
+  for (unsigned long i = 0; i < Asparse.shape()[0]; i++) {
+    Asparse(i, 1) = A(i, i);
+    if (i < Asparse.shape()[0] - 1) {
+      Asparse(i, 2) = A(i, i + 1);
+    }
+    if (i > 0) {
+      Asparse(i, 0) = A(i, i - 1);
+    }
+  }
+  Asparse(0, 0) = s_nan;
+  Asparse(size - 1, 2) = s_nan;
+  SparseTriDiagSolver solver(size);
+  vector x = solver.solve(Asparse, b);
+  vector expected{5.0,         10.0, 15.0, 20.0, 25.0,
+                  199.0 / 7.0, 24.0, 18.0, 12.0, 6.0};
+  expected *= -7.0 / 11.0;
+  for (unsigned long i = 0; i < size; i++) {
+    EXPECT_NEAR(x(i), expected(i), 1e-14);
+  }
+}
+
 TEST(arnoldi, gmres) {
   constexpr unsigned long size = 10;
   auto [A, b] = simple_test(size);
