@@ -112,6 +112,40 @@ protected:
   vector partial;
 };
 
+class TriDiagSolver : public Solver {
+public:
+  explicit TriDiagSolver(unsigned long sys_size)
+      : Solver(sys_size), u_diag(vector::shape_type{sys_size - 1}) {}
+
+  const vector &solve(const matrix &system, const vector &sol) {
+    assert(system(0, 0) != 0.0);
+    assert(system.shape()[0] == diagonal.shape()[0]);
+    assert(system.shape()[1] == diagonal.shape()[0]);
+    assert(sol.shape()[0] == diagonal.shape()[0]);
+    vars(0) = sol(0) / system(0, 0);
+    u_diag(0) = system(0, 1) / system(0, 0);
+    // Forward substitution to clear the lower diagonal
+    for (unsigned long i = 1; i < vars.shape()[0]; i++) {
+      // We're subtracting system(i, i - 1) * prev_row from this row
+      // Then normalizing so that the diagonal of this row is 1.0
+      const real diag = system(i, i) - u_diag(i - 1) * system(i, i - 1);
+			assert(diag != 0.0);
+      vars(i) = (sol(i) - vars(i - 1) * system(i, i - 1)) / diag;
+      if (i + 1 < vars.shape()[0]) {
+        u_diag(i) = system(i, i + 1) / diag;
+      }
+    }
+    // Now the back substitution
+    for (unsigned long i = u_diag.shape()[0] - 1; i < u_diag.shape()[0]; i--) {
+      vars(i) -= vars(i + 1) * u_diag(i);
+    }
+    return vars;
+  }
+
+protected:
+  vector u_diag;
+};
+
 class GMRESSolver : public Solver {
 public:
   static constexpr int min_iters = 10;
@@ -187,7 +221,33 @@ public:
     std::swap(H, new_H);
   }
 
+  real add_arnoldi(const matrix &system) {
+    assert(subspace.size() > 0);
+    vector next(vector::shape_type{vars.shape()[0]});
+    dot(next, system, *(subspace.end() - 1));
+    const unsigned long j = subspace.size() - 1;
+    // Apply Gram-Schmidt to compute the orthogonal component
+    for (unsigned long i = 0; i <= j; i++) {
+      const vector &v = subspace[i];
+      assert(i < H.shape()[0]);
+      assert(j < H.shape()[1]);
+      dot(H(i, j), next, v);
+      // All of the vectors in our subspace are orthogonal to each other, so
+      // hij doesn't change as we subtract components off Thus, to avoid
+      // repeating work, store it here
+      for (unsigned long k = 0; k < v.shape()[0]; k++) {
+        next(k) -= H(i, j) * v(k);
+      }
+    }
+
+    H(j + 1, j) = normalize(next);
+    subspace.push_back(next);
+    return H(j + 1, j);
+  }
+
   // A nicer version which doesn't assume how many iterations we're doing
+  // This unfortunately likely doesn't perform as well, as it continuously
+  // allocates new vectors
   real add_arnoldi(std::vector<vector> &subspace, std::vector<vector> &H,
                    const matrix &system) {
     assert(subspace.size() > 0);
@@ -205,30 +265,6 @@ public:
     subspace.push_back(next);
     H.push_back(hj);
     return hj(hj.shape()[0] - 1);
-  }
-
-  real &add_arnoldi(const matrix &system) {
-    assert(subspace.size() > 0);
-    vector next(vector::shape_type{vars.shape()[0]});
-    dot(next, system, *(subspace.end() - 1));
-    const unsigned long j = subspace.size() - 1;
-    // Apply Gram-Schmidt to compute the orthogonal component
-    for (unsigned long i = 0; i <= j; i++) {
-      const vector &v = subspace[i];
-      assert(i < H.shape()[0]);
-      assert(j < H.shape()[1]);
-      dot(H(i, j), next, v);
-      // All of the vectors in our subspace are orthogonal to each other, so hij
-      // doesn't change as we subtract components off
-      // Thus, to avoid repeating work, store it here
-      for (unsigned long k = 0; k < v.shape()[0]; k++) {
-        next(k) -= H(i, j) * v(k);
-      }
-    }
-
-    H(j + 1, j) = normalize(next);
-    subspace.push_back(next);
-    return H(j + 1, j);
   }
 
 protected:

@@ -101,10 +101,9 @@ TEST(cell_indices, implicit_euler) {
   }
 }
 
-TEST(arnoldi, gmres) {
-  constexpr unsigned long problem_size = 10;
-  matrix A(matrix::shape_type{problem_size, problem_size});
-  vector b(vector::shape_type{problem_size});
+std::pair<matrix, vector> simple_test(const unsigned long size) {
+  matrix A(matrix::shape_type{size, size});
+  vector b(vector::shape_type{size});
   for (unsigned long i = 0; i < A.shape()[0]; i++) {
     b(i) = 0.0;
     for (unsigned long j = 0; j < A.shape()[1]; j++) {
@@ -121,11 +120,30 @@ TEST(arnoldi, gmres) {
       A(i, i + 1) = 1.0;
     }
   }
+  return {A, b};
+}
+
+TEST(tridiag, solvers) {
+  constexpr unsigned long size = 10;
+  auto [A, b] = simple_test(size);
+  TriDiagSolver solver(size);
+  vector x = solver.solve(A, b);
+  vector expected{5.0,         10.0, 15.0, 20.0, 25.0,
+                  199.0 / 7.0, 24.0, 18.0, 12.0, 6.0};
+  expected *= -7.0 / 11.0;
+  for (unsigned long i = 0; i < size; i++) {
+    EXPECT_NEAR(x(i), expected(i), 1e-14);
+  }
+}
+
+TEST(arnoldi, gmres) {
+  constexpr unsigned long size = 10;
+  auto [A, b] = simple_test(size);
   GMRESSolver test(10);
   test.initial_subspace(b);
   {
     const vector &check = test.subspace_vector(0);
-    for (unsigned long i = 0; i < problem_size; i++) {
+    for (unsigned long i = 0; i < size; i++) {
       EXPECT_NEAR(check(i), b(i) * std::sqrt(3) / 9.0, 1e-15);
     }
   }
@@ -136,7 +154,7 @@ TEST(arnoldi, gmres) {
     const real scale = std::sqrt(3.0 * 278) / 5004.0;
     const vector expected_1{0.0,   0.0,   0.0,  27.0, 115.0,
                             -46.0, 115.0, 27.0, 0.0,  0.0};
-    for (unsigned long i = 0; i < problem_size; i++) {
+    for (unsigned long i = 0; i < size; i++) {
       EXPECT_NEAR(check(i), scale * expected_1(i), 1e-15);
     }
   }
@@ -147,7 +165,7 @@ TEST(arnoldi, gmres) {
     const real scale = std::sqrt(278.0 * 791.0) / 879592.0;
     const vector expected_2{0.0,   0.0,    278.0,  1265.0, -275.0,
                             110.0, -275.0, 1265.0, 278.0,  0.0};
-    for (unsigned long i = 0; i < problem_size; i++) {
+    for (unsigned long i = 0; i < size; i++) {
       EXPECT_NEAR(check(i) / scale, expected_2(i), 2e-12);
     }
   }
