@@ -129,9 +129,10 @@ public:
       // We're subtracting system(i, i - 1) * prev_row from this row
       // Then normalizing so that the diagonal of this row is 1.0
       const real diag = system(i, i) - u_diag(i - 1) * system(i, i - 1);
-			assert(diag != 0.0);
+      assert(diag != 0.0);
       vars(i) = (sol(i) - vars(i - 1) * system(i, i - 1)) / diag;
       if (i + 1 < vars.shape()[0]) {
+        // Normalize the upper diagonal as well
         u_diag(i) = system(i, i + 1) / diag;
       }
     }
@@ -146,14 +147,12 @@ protected:
   vector u_diag;
 };
 
-class GMRESSolver : public Solver {
+template <unsigned int num_iters> class GMRESSolver : public Solver {
 public:
-  static constexpr int min_iters = 10;
-
   explicit GMRESSolver(unsigned long sys_size)
       : Solver(sys_size), subspace(),
-        H(matrix::shape_type{min_iters + 1, min_iters}),
-        reduced_solver(min_iters) {}
+        H(matrix::shape_type{num_iters + 1, num_iters}),
+        reduced_solver(num_iters) {}
 
   const vector &solve(const matrix &system, const vector &sol) {
     const real beta = initial_subspace(sol);

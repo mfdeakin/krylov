@@ -139,7 +139,9 @@ TEST(tridiag, solvers) {
 TEST(arnoldi, gmres) {
   constexpr unsigned long size = 10;
   auto [A, b] = simple_test(size);
-  GMRESSolver test(10);
+  // This subspace will fully solve the system, slower than LU would have...
+  // It converges slowly enough that doing any less makes testing difficult
+  GMRESSolver<10> test(10);
   test.initial_subspace(b);
   {
     const vector &check = test.subspace_vector(0);
@@ -169,7 +171,15 @@ TEST(arnoldi, gmres) {
       EXPECT_NEAR(check(i) / scale, expected_2(i), 2e-12);
     }
   }
-  { test.solve(A, b); }
+  {
+    const vector &x = test.solve(A, b);
+    vector expected{5.0,         10.0, 15.0, 20.0, 25.0,
+                    199.0 / 7.0, 24.0, 18.0, 12.0, 6.0};
+    expected *= -7.0 / 11.0;
+    for (unsigned long i = 0; i < size; i++) {
+      EXPECT_NEAR(x(i), expected(i), 1e-12);
+    }
+  }
 }
 
 TEST(solve_20_10, implicit_euler) {
