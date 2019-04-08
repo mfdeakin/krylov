@@ -119,6 +119,8 @@ public:
         H(matrix::shape_type{num_iters + 1, num_iters}),
         reduced_solver(num_iters) {}
 
+  virtual ~GMRESSolver() = default;
+
   const vector &solve(const matrix &system, const vector &sol) {
     const real beta = initial_subspace(sol);
     for (unsigned long i = 0; i < H.shape()[0]; i++) {
@@ -128,13 +130,10 @@ public:
     }
     // Presumably we only rarely want to use less iterations than previously
     for (unsigned long i = 0; i < reduced_solver.size(); i++) {
-      const real mag = add_arnoldi(system);
       // If we have the zero vector, we have an exact solution in our subspace
       // This is unfortunate, as I don't handle this case yet
-      assert(std::abs(mag) > 1e-20);
-      // if (std::abs(mag) < 1e-10) {
-      //   shrink_subspace();
-      // }
+      const real mag = std::abs(add_arnoldi(system));
+      assert(mag > 1e-20);
     }
 
     // We have our subspace, now minimize $||\beta e_1 - H y||$
@@ -153,9 +152,7 @@ public:
     }
     for (unsigned long i = 0; i < subsol.shape()[0]; i++) {
       const vector &dim = subspace[i];
-      for (unsigned long j = 0; j < vars.shape()[0]; j++) {
-        vars(j) += subsol(i) * dim(j);
-      }
+      vars += subsol(i) * dim;
     }
     return vars;
   }
@@ -291,6 +288,8 @@ public:
         sparse_tdiags(matrix::shape_type{sys_size, 3}),
         next_unp(vector::shape_type{sys_size}) {}
 
+  virtual ~GMRESTDPSolver() = default;
+
   const vector &solve(const matrix &system, const vector &sol) {
     // We need to initialize the sparse_tdiags matrix for preconditioning
     for (int i = 0; i < system.shape()[0]; i++) {
@@ -298,7 +297,7 @@ public:
       sparse_tdiags(i, 1) = system(i, i);
       sparse_tdiags(i, 2) = system(i, i + 1);
     }
-    Parent::solve(system, sol);
+    return Parent::solve(system, sol);
   }
 
   virtual real add_arnoldi(const matrix &system) {
