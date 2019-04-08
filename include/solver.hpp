@@ -132,7 +132,10 @@ public:
     for (unsigned long i = 0; i < reduced_solver.size(); i++) {
       // If we have the zero vector, we have an exact solution in our subspace
       // This is unfortunate, as I don't handle this case yet
-      const real mag = std::abs(add_arnoldi(system));
+#ifndef NDEBUG
+      const real mag =
+#endif
+          std::abs(add_arnoldi(system));
       assert(mag > 1e-20);
     }
 
@@ -306,7 +309,7 @@ public:
     vector next = td.solve(sparse_tdiags, next_unp);
     const unsigned long j = this->subspace.size() - 1;
     // Apply Gram-Schmidt to compute the orthogonal component
-    gram_schmidt(next, this->subspace);
+    this->gram_schmidt(next, this->subspace);
     this->subspace.push_back(next);
     return this->H(j + 1, j);
   }
