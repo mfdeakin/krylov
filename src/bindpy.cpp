@@ -244,6 +244,32 @@ PYBIND11_MODULE(krylov, module) {
       .def("system", &ImplicitEuler<SecondOrderCentered, LUSolver>::sys)
       .def("solution", &ImplicitEuler<SecondOrderCentered, LUSolver>::sol)
       .def("delta", &ImplicitEuler<SecondOrderCentered, LUSolver>::delta);
+  py::class_<ImplicitEulerApproxFact<SecondOrderCentered>,
+             std::shared_ptr<ImplicitEulerApproxFact<SecondOrderCentered>>,
+             TimeDisc<SecondOrderCentered>>
+      ie_af_solver(module, "ImplicitEulerAFSolver");
+  ie_af_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep", &ImplicitEulerApproxFact<SecondOrderCentered>::timestep)
+      .def("assemble_system_dx",
+           &ImplicitEulerApproxFact<SecondOrderCentered>::assemble_system_dx)
+      .def("assemble_system_dy",
+           &ImplicitEulerApproxFact<SecondOrderCentered>::assemble_system_dy);
   py::class_<
       ImplicitEuler<SecondOrderCentered, GMRESSolver<10>>,
       std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESSolver<10>>>,

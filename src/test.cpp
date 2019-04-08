@@ -71,7 +71,9 @@ default_ie_lu_solver(const int cells_x, const int cells_y) {
       c1, c2, cells_x, cells_y,
       [](const real x, const real y) {
         constexpr real avg_u = 3.0;
-        return triple{0.0, 6.0 * avg_u * y * (1.0 - y), 0.0};
+        return triple{1.0 * std::cos(pi * x) * std::sin(pi * y),
+                      avg_u * y * std::sin(pi * x), 0.5 * x * std::cos(pi * y)};
+        // return triple{0.0, 6.0 * avg_u * y * (1.0 - y), 0.0};
       },
       space_disc, bottom_temp, top_temp, left_temp, def_bc, def_bc, def_bc,
       def_bc, def_bc, def_bc, def_bc, def_bc, def_bc);
@@ -83,7 +85,8 @@ TEST(cell_indices, implicit_euler) {
   ImplicitEuler<SecondOrderCentered, LUSolver> sim =
       default_ie_lu_solver(cells_x, cells_y);
   // Better would be to ensure that the cell indices are all within range and
-  // unique, but this is easier for now
+  // unique, but this (which guarantees more than that, ignoring overflow)
+  // is easier for now
   int expected_idx = 0;
   for (int j = 0; j < cells_y; j++) {
     EXPECT_EQ(sim.cell_idx(-1, j), expected_idx);
@@ -98,6 +101,86 @@ TEST(cell_indices, implicit_euler) {
   for (int j = 0; j < cells_y; j++) {
     EXPECT_EQ(sim.cell_idx(cells_x, j), expected_idx);
     expected_idx++;
+  }
+  EXPECT_EQ(((sim.mesh().cells_x() + 2) * (sim.mesh().cells_y() + 2) - 4),
+            expected_idx);
+}
+
+TEST(system, implicit_euler) {
+  constexpr int cells_x = 62, cells_y = 62;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  constexpr real dt = 0.25;
+  auto [A, b] = sim.assemble_system(dt);
+  for (int i = 1; i < cells_x - 1; i++) {
+    for (int j = 1; j < cells_y - 1; j++) {
+      const int cur_idx = sim.cell_idx(i, j);
+      {
+        const Mesh &mesh = sim.mesh();
+        const real flux_dx = (mesh.vel_u(i + 1, j) * mesh.Temp(i + 1, j) -
+                              mesh.vel_u(i - 1, j) * mesh.Temp(i - 1, j)) /
+                             (2.0 * mesh.dx());
+        const real flux_diff_x = (mesh.Temp(i + 1, j) - 2.0 * mesh.Temp(i, j) +
+                                  mesh.Temp(i - 1, j)) /
+                                 (mesh.dx() * mesh.dx());
+        const real flux_dy = (mesh.vel_v(i, j + 1) * mesh.Temp(i, j + 1) -
+                              mesh.vel_v(i, j - 1) * mesh.Temp(i, j - 1)) /
+                             (2.0 * mesh.dy());
+        const real flux_diff_y = (mesh.Temp(i, j + 1) - 2.0 * mesh.Temp(i, j) +
+                                  mesh.Temp(i, j - 1)) /
+                                 (mesh.dy() * mesh.dy());
+        const real flux_term = flux_dx + flux_dy -
+                               sim.diffusion() * (flux_diff_x + flux_diff_y) /
+                                   (sim.reynolds() * sim.prandtl());
+
+        const real source_dx =
+            (mesh.vel_u(i + 1, j) - mesh.vel_u(i - 1, j)) / (2.0 * mesh.dx());
+        const real source_dy =
+            (mesh.vel_v(i, j + 1) - mesh.vel_v(i, j - 1)) / (2.0 * mesh.dy());
+        const real source_cross =
+            (mesh.vel_v(i + 1, j) - mesh.vel_v(i - 1, j)) / (2.0 * mesh.dx()) +
+            (mesh.vel_u(i, j + 1) - mesh.vel_u(i, j - 1)) / (2.0 * mesh.dy());
+        const real source_term =
+            sim.eckert() / sim.reynolds() *
+            (2.0 * source_dx * source_dx + 2.0 * source_dy * source_dy +
+             source_cross * source_cross);
+        EXPECT_NEAR(b(cur_idx), -flux_term + source_term, 1e-10);
+      }
+
+      EXPECT_NEAR(A(cur_idx, cur_idx),
+                  1.0 / dt +
+                      2.0 * sim.diffusion() /
+                          (sim.reynolds() * sim.prandtl() * sim.mesh().dx() *
+                           sim.mesh().dx()) +
+                      2.0 * sim.diffusion() /
+                          (sim.reynolds() * sim.prandtl() * sim.mesh().dy() *
+                           sim.mesh().dy()),
+                  1e-10);
+      const int left_idx = sim.cell_idx(i - 1, j);
+      EXPECT_NEAR(A(cur_idx, left_idx),
+                  -sim.mesh().vel_u(i - 1, j) / (2.0 * sim.mesh().dx()) -
+                      sim.diffusion() / (sim.reynolds() * sim.prandtl() *
+                                         sim.mesh().dx() * sim.mesh().dx()),
+                  1e-10);
+      const int right_idx = sim.cell_idx(i + 1, j);
+      EXPECT_NEAR(A(cur_idx, right_idx),
+                  sim.mesh().vel_u(i + 1, j) / (2.0 * sim.mesh().dx()) -
+                      sim.diffusion() / (sim.reynolds() * sim.prandtl() *
+                                         sim.mesh().dx() * sim.mesh().dx()),
+                  1e-10);
+      const int below_idx = sim.cell_idx(i, j - 1);
+      EXPECT_NEAR(A(cur_idx, below_idx),
+                  -sim.mesh().vel_v(i, j - 1) / (2.0 * sim.mesh().dy()) -
+                      sim.diffusion() / (sim.reynolds() * sim.prandtl() *
+                                         sim.mesh().dy() * sim.mesh().dy()),
+                  1e-10);
+      const int above_idx = sim.cell_idx(i, j + 1);
+      EXPECT_NEAR(A(cur_idx, above_idx),
+                  sim.mesh().vel_v(i, j + 1) / (2.0 * sim.mesh().dy()) -
+                      sim.diffusion() / (sim.reynolds() * sim.prandtl() *
+                                         sim.mesh().dy() * sim.mesh().dy()),
+                  1e-10);
+    }
   }
 }
 
@@ -207,7 +290,7 @@ TEST(arnoldi, gmres) {
   }
 }
 
-TEST(solve_20_10, implicit_euler) {
+TEST(solve_20_10_lu, implicit_euler) {
   constexpr int cells_x = 18, cells_y = 8;
   ImplicitEuler<SecondOrderCentered, LUSolver> sim =
       default_ie_lu_solver(cells_x, cells_y);
@@ -226,6 +309,220 @@ TEST(solve_20_10, implicit_euler) {
                    .count()
             << " us; " << num_ts << " iterations; " << delta << " final delta"
             << std::endl;
+}
+
+TEST(solve_40_20_lu, implicit_euler) {
+  constexpr int cells_x = 38, cells_y = 18;
+  ImplicitEuler<SecondOrderCentered, LUSolver> sim =
+      default_ie_lu_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+template <int num_iters = 40>
+ImplicitEuler<SecondOrderCentered, GMRESSolver<num_iters>>
+default_ie_gmres_solver(const int cells_x, const int cells_y) {
+  constexpr real reynolds = 25.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  std::pair<real, real> c1{0.0, 0.0};
+  std::pair<real, real> c2{40.0, 1.0};
+  SecondOrderCentered space_disc(1.0, reynolds, prandtl, eckert);
+
+  std::pair<BCType, std::function<real(real, real, real)>> def_bc{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> left_temp{
+      BCType::Dirichlet,
+      [](const real, const real y, const real) { return y; }};
+  std::pair<BCType, std::function<real(real, real, real)>> bottom_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> top_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 1.0; }};
+
+  ImplicitEuler<SecondOrderCentered, GMRESSolver<num_iters>> sim(
+      c1, c2, cells_x, cells_y,
+      [](const real x, const real y) {
+        constexpr real avg_u = 3.0;
+        return triple{0.0, 6.0 * avg_u * y * (1.0 - y), 0.0};
+      },
+      space_disc, bottom_temp, top_temp, left_temp, def_bc, def_bc, def_bc,
+      def_bc, def_bc, def_bc, def_bc, def_bc, def_bc);
+  return sim;
+}
+
+TEST(solve_20_10_gmres, implicit_euler) {
+  constexpr int cells_x = 18, cells_y = 8;
+  auto sim = default_ie_gmres_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(solve_40_20_gmres, implicit_euler) {
+  constexpr int cells_x = 38, cells_y = 18;
+  auto sim = default_ie_gmres_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(solve_80_40_gmres, implicit_euler) {
+  constexpr int cells_x = 48, cells_y = 38;
+  auto sim = default_ie_gmres_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+ImplicitEulerApproxFact<SecondOrderCentered>
+default_ie_af_solver(const int cells_x, const int cells_y) {
+  constexpr real reynolds = 25.0;
+  constexpr real prandtl = 0.7;
+  constexpr real eckert = 0.1;
+  std::pair<real, real> c1{0.0, 0.0};
+  std::pair<real, real> c2{40.0, 1.0};
+  SecondOrderCentered space_disc(1.0, reynolds, prandtl, eckert);
+
+  std::pair<BCType, std::function<real(real, real, real)>> def_bc{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> left_temp{
+      BCType::Dirichlet,
+      [](const real, const real y, const real) { return y; }};
+  std::pair<BCType, std::function<real(real, real, real)>> bottom_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 0.0; }};
+  std::pair<BCType, std::function<real(real, real, real)>> top_temp{
+      BCType::Dirichlet,
+      [](const real, const real, const real) { return 1.0; }};
+
+  ImplicitEulerApproxFact<SecondOrderCentered> sim(
+      c1, c2, cells_x, cells_y,
+      [](const real x, const real y) {
+        constexpr real avg_u = 3.0;
+        return triple{0.0, 6.0 * avg_u * y * (1.0 - y), 0.0};
+      },
+      space_disc, bottom_temp, top_temp, left_temp, def_bc, def_bc, def_bc,
+      def_bc, def_bc, def_bc, def_bc, def_bc, def_bc);
+  return sim;
+}
+
+TEST(solve_20_10_approxfact, implicit_euler) {
+  constexpr int cells_x = 18, cells_y = 8;
+  ImplicitEulerApproxFact<SecondOrderCentered> sim =
+      default_ie_af_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(solve_40_20_approxfact, implicit_euler) {
+  constexpr int cells_x = 38, cells_y = 18;
+  ImplicitEulerApproxFact<SecondOrderCentered> sim =
+      default_ie_af_solver(cells_x, cells_y);
+  real delta = std::numeric_limits<real>::infinity();
+  auto start = std::chrono::high_resolution_clock::now();
+  int num_ts = 0;
+  while (delta > 1e-9) {
+    delta = sim.timestep(0.25);
+    num_ts++;
+    // std::cout << delta << " delta" << std::endl;
+  }
+  auto end = std::chrono::high_resolution_clock::now();
+  std::cout << "Time to steady state: "
+            << std::chrono::duration_cast<std::chrono::microseconds>(end -
+                                                                     start)
+                   .count()
+            << " us; " << num_ts << " iterations; " << delta << " final delta"
+            << std::endl;
+}
+
+TEST(assemble_sys, approximate_factorization) {
+  constexpr int cells_x = 20;
+  constexpr int cells_y = 10;
+  ImplicitEulerApproxFact<SecondOrderCentered> sim =
+      default_ie_af_solver(cells_x, cells_y);
+  constexpr real dt = 0.25;
+  constexpr int j = 1;
+  matrix dx = sim.assemble_system_dx(dt, j);
+  EXPECT_EQ(dx.shape()[0], cells_x + 2);
+  EXPECT_EQ(dx.shape()[1], 3);
+  EXPECT_TRUE(std::isnan(dx(0, 0)));
+  EXPECT_EQ(dx(0, 1), 1.0);
+  EXPECT_EQ(dx(0, 2), 1.0);
+  EXPECT_EQ(dx(dx.shape()[0] - 1, 0), 1.0);
+  EXPECT_EQ(dx(dx.shape()[0] - 1, 1), 1.0);
+  EXPECT_TRUE(std::isnan(dx(dx.shape()[0] - 1, 2)));
+  for (int i = 0; i < cells_x; i++) {
+    EXPECT_NEAR(dx(i + 1, 1),
+                dt * (-1.0 / (sim.mesh().dx() * sim.mesh().dx()) +
+                      sim.mesh().vel_u(1, j) / (2.0 * sim.mesh().dx())),
+                1e-15);
+  }
 }
 
 TEST(lu_decomp, solvers) {
@@ -282,6 +579,60 @@ Mesh construct_mesh_with_hbc(
     const int cells_x, const int cells_y, std::pair<real, real> corner_1,
     std::pair<real, real> corner_2,
     std::function<triple(real, real)> initial_conds) noexcept;
+
+TEST(source_term, second_order_space_disc) {
+  // Our source term shouldn't dependo on the temperature
+  constexpr real T0 = q_nan;
+  constexpr real u0 = 1.0;
+  constexpr real v0 = 2.0;
+  constexpr int cells_x = 256, cells_y = 256;
+  constexpr std::pair<real, real> corner_1{0.0, -0.125}, corner_2{0.5, 0.125};
+  // T = T0 cos(pi x) sin(pi y)
+  // u = u0 y sin(pi x)
+  // v = v0 x cos(pi y)
+  Mesh src(construct_mesh_with_hbc(
+      cells_x, cells_y, corner_1, corner_2, [&](real x, real y) {
+        return triple{T0 * std::cos(pi * x) * std::sin(pi * y),
+                      u0 * y * std::sin(pi * x), v0 * x * std::cos(pi * y)};
+      }));
+  constexpr real reynolds = 1.0;
+  constexpr real prandtl = 1.0;
+  constexpr real eckert = 1.0;
+  constexpr real diffusion = 1.0;
+  SecondOrderCentered sd(diffusion, reynolds, prandtl, eckert);
+  const auto expected_dudx = [](const real x, const real y) {
+    return u0 * pi * std::cos(pi * x) * y;
+  };
+  const auto expected_dvdy = [](const real x, const real y) {
+    return -v0 * pi * std::sin(pi * y) * x;
+  };
+  const auto expected_dudy = [](const real x, const real y) {
+    return u0 * std::sin(pi * x);
+  };
+  const auto expected_dvdx = [](const real x, const real y) {
+    return v0 * std::cos(pi * y);
+  };
+  const auto expected_source = [&](const real x, const real y) {
+    const real dudx = expected_dudx(x, y);
+    const real dvdy = expected_dvdy(x, y);
+    const real dudy = expected_dudy(x, y);
+    const real dvdx = expected_dvdx(x, y);
+    return eckert / reynolds *
+           (2.0 * dudx * dudx + 2.0 * dvdy * dvdy +
+            (dudy + dvdx) * (dudy + dvdx));
+  };
+  for (int i = 1; i < src.cells_x() - 1; i++) {
+    for (int j = 1; j < src.cells_y() - 1; j++) {
+      const real x = src.median_x(i);
+      const real y = src.median_y(j);
+      EXPECT_NEAR(sd.du_dx_fd(src, i, j), expected_dudx(x, y), 1e-4);
+      EXPECT_NEAR(sd.dv_dy_fd(src, i, j), expected_dvdy(x, y), 5e-5);
+      EXPECT_NEAR(sd.du_dy_fd(src, i, j), expected_dudy(x, y), 1e-4);
+      EXPECT_NEAR(sd.dv_dx_fd(src, i, j), expected_dvdx(x, y), 5e-5);
+      EXPECT_NEAR(sd.source_fd(src, i, j), expected_source(x, y), 1e-4);
+    }
+  }
+}
 
 TEST(flux_int_components, second_order_space_disc) {
   constexpr real T0 = 1.0;
@@ -376,6 +727,34 @@ TEST(flux_int_diffusion, second_order_space_disc) {
                           std::cos(2.0 * pi * y) +
                       diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
                           std::cos(pi * x) * std::sin(pi * y));
+
+        // Dx terms
+        EXPECT_NEAR(sd.Dx_m1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dx() * src.dx()) -
+                        src.vel_u(i - 1, j) / (2.0 * src.dx()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dx_0(src, i, j),
+                    -diffusion * 2.0 /
+                        (reynolds * prandtl * src.dx() * src.dx()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dx_p1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dx() * src.dx()) +
+                        src.vel_u(i + 1, j) / (2.0 * src.dx()),
+                    1e-15);
+
+        // Dy terms
+        EXPECT_NEAR(sd.Dy_m1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dy() * src.dy()) -
+                        src.vel_v(i, j - 1) / (2.0 * src.dy()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dy_0(src, i, j),
+                    -diffusion * 2.0 /
+                        (reynolds * prandtl * src.dy() * src.dy()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dy_p1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dy() * src.dy()) +
+                        src.vel_v(i, j + 1) / (2.0 * src.dy()),
+                    1e-15);
       }
     }
   }
@@ -398,6 +777,34 @@ TEST(flux_int_diffusion, second_order_space_disc) {
                     std::cos(pi * x) * std::sin(pi * y),
             1e-5);
         EXPECT_EQ(sd.lapl_T_flux_integral(src, i, j), flux_integral);
+
+        // Dx terms
+        EXPECT_NEAR(sd.Dx_m1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dx() * src.dx()) -
+                        src.vel_u(i - 1, j) / (2.0 * src.dx()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dx_0(src, i, j),
+                    diffusion * 2.0 /
+                        (reynolds * prandtl * src.dx() * src.dx()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dx_p1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dx() * src.dx()) +
+                        src.vel_u(i + 1, j) / (2.0 * src.dx()),
+                    1e-15);
+
+        // Dy terms
+        EXPECT_NEAR(sd.Dy_m1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dy() * src.dy()) -
+                        src.vel_v(i, j - 1) / (2.0 * src.dy()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dy_0(src, i, j),
+                    diffusion * 2.0 /
+                        (reynolds * prandtl * src.dy() * src.dy()),
+                    1e-15);
+        EXPECT_NEAR(sd.Dy_p1(src, i, j),
+                    -diffusion / (reynolds * prandtl * src.dy() * src.dy()) +
+                        src.vel_v(i, j + 1) / (2.0 * src.dy()),
+                    1e-15);
       }
     }
   }
@@ -438,6 +845,32 @@ TEST(flux_int_horiz, second_order_space_disc) {
               diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
                   std::cos(pi * x) * std::sin(pi * y),
           1e-4);
+
+      // Dx terms
+      EXPECT_NEAR(sd.Dx_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) -
+                      src.vel_u(i - 1, j) / (2.0 * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dx() * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) +
+                      src.vel_u(i + 1, j) / (2.0 * src.dx()),
+                  1e-15);
+
+      // Dy terms
+      EXPECT_NEAR(sd.Dy_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) -
+                      src.vel_v(i, j - 1) / (2.0 * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dy() * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) +
+                      src.vel_v(i, j + 1) / (2.0 * src.dy()),
+                  1e-15);
     }
   }
 }
@@ -477,6 +910,32 @@ TEST(flux_int_vert, second_order_space_disc) {
               diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
                   std::cos(pi * x) * std::sin(pi * y),
           1e-4);
+
+      // Dx terms
+      EXPECT_NEAR(sd.Dx_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) -
+                      src.vel_u(i - 1, j) / (2.0 * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dx() * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) +
+                      src.vel_u(i + 1, j) / (2.0 * src.dx()),
+                  1e-15);
+
+      // Dy terms
+      EXPECT_NEAR(sd.Dy_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) -
+                      src.vel_v(i, j - 1) / (2.0 * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dy() * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) +
+                      src.vel_v(i, j + 1) / (2.0 * src.dy()),
+                  1e-15);
     }
   }
 }
@@ -516,6 +975,32 @@ TEST(flux_int_complete, second_order_space_disc) {
               diffusion * (2.0 * T0 * pi * pi) / (reynolds * prandtl) *
                   std::cos(pi * x) * std::sin(pi * y),
           1e-3);
+
+      // Dx terms
+      EXPECT_NEAR(sd.Dx_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) -
+                      src.vel_u(i - 1, j) / (2.0 * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dx() * src.dx()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dx_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dx() * src.dx()) +
+                      src.vel_u(i + 1, j) / (2.0 * src.dx()),
+                  1e-15);
+
+      // Dy terms
+      EXPECT_NEAR(sd.Dy_m1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) -
+                      src.vel_v(i, j - 1) / (2.0 * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_0(src, i, j),
+                  diffusion * 2.0 / (reynolds * prandtl * src.dy() * src.dy()),
+                  1e-15);
+      EXPECT_NEAR(sd.Dy_p1(src, i, j),
+                  -diffusion / (reynolds * prandtl * src.dy() * src.dy()) +
+                      src.vel_v(i, j + 1) / (2.0 * src.dy()),
+                  1e-15);
     }
   }
 }
@@ -538,15 +1023,12 @@ TEST(flux_int_complete, second_order_space_disc) {
   NeumannBC<Mesh::vert_view>(src.ghostcells_right_Temp(),
                              src.bndrycells_right_Temp())
       .apply(0.0);
-  // The velocity bc isn't homogeneous Neumann or Dirichlet here
-  // Physically the horizontal velocity in the top and bottom ghost cells is
-  // degenerate
-  // DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_u(),
-  //                               src.bndrycells_top_vel_u())
-  //     .apply(0.0);
-  // DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_u(),
-  //                               src.bndrycells_bottom_vel_u())
-  //     .apply(0.0);
+  DirichletBC<Mesh::horiz_view>(src.ghostcells_top_vel_u(),
+                                src.bndrycells_top_vel_u())
+      .apply(0.0);
+  DirichletBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_u(),
+                                src.bndrycells_bottom_vel_u())
+      .apply(0.0);
   DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_u(),
                                src.bndrycells_left_vel_u())
       .apply(0.0);
@@ -559,14 +1041,12 @@ TEST(flux_int_complete, second_order_space_disc) {
   NeumannBC<Mesh::horiz_view>(src.ghostcells_bottom_vel_v(),
                               src.bndrycells_bottom_vel_v())
       .apply(0.0);
-  // The velocity bc isn't homogeneous Neumann or Dirichlet here
-  // This velocity component is also degenerate in these ghost cells
-  // DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_v(),
-  //                              src.bndrycells_left_vel_v())
-  //     .apply(0.0);
-  // DirichletBC<Mesh::vert_view>(src.ghostcells_right_vel_v(),
-  //                              src.bndrycells_right_vel_v())
-  //     .apply(0.0);
+  DirichletBC<Mesh::vert_view>(src.ghostcells_left_vel_v(),
+                               src.bndrycells_left_vel_v())
+      .apply(0.0);
+  DirichletBC<Mesh::vert_view>(src.ghostcells_right_vel_v(),
+                               src.bndrycells_right_vel_v())
+      .apply(0.0);
   return src;
 }
 
@@ -590,8 +1070,14 @@ TEST(boundary_cond, homogeneous) {
       EXPECT_EQ(src.Temp(i, j), saved.Temp(i, j));
     }
   }
-  DirichletBC top_bc(src.ghostcells_top_Temp(), src.bndrycells_top_Temp());
-  top_bc.apply(0.0);
+  DirichletBC top_Temp_bc(src.ghostcells_top_Temp(), src.bndrycells_top_Temp());
+  top_Temp_bc.apply(0.0);
+  DirichletBC top_vel_u_bc(src.ghostcells_top_vel_u(),
+                           src.bndrycells_top_vel_u());
+  top_vel_u_bc.apply(0.0);
+  DirichletBC top_vel_v_bc(src.ghostcells_top_vel_v(),
+                           src.bndrycells_top_vel_v());
+  top_vel_v_bc.apply(0.0);
   // Check that every cell is untouched except for the top ghost cells
   for (int i = -1; i < src.cells_x() + 1; i++) {
     for (int j = -1; j < src.cells_y(); j++) {
@@ -600,11 +1086,25 @@ TEST(boundary_cond, homogeneous) {
       } else {
         EXPECT_EQ(saved.Temp(i, j), src.Temp(i, j));
       }
+      if (std::isnan(saved.vel_u(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_u(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_u(i, j), src.vel_u(i, j));
+      }
+      if (std::isnan(saved.vel_v(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_v(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_v(i, j), src.vel_v(i, j));
+      }
     }
   }
   // The top corners should still be NaN
   EXPECT_TRUE(std::isnan(src.Temp(-1, src.cells_y())));
   EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), src.cells_y())));
 
   // Ensure that the boundary condition is met - since it's homogeneous it
   // should be exact
@@ -612,11 +1112,23 @@ TEST(boundary_cond, homogeneous) {
     EXPECT_FALSE(std::isnan(src.Temp(i, src.cells_y() - 1)));
     EXPECT_FALSE(std::isnan(src.Temp(i, src.cells_y())));
     EXPECT_EQ(src.Temp(i, src.cells_y() - 1), -src.Temp(i, src.cells_y()));
+    EXPECT_FALSE(std::isnan(src.vel_u(i, src.cells_y() - 1)));
+    EXPECT_FALSE(std::isnan(src.vel_u(i, src.cells_y())));
+    EXPECT_EQ(src.vel_u(i, src.cells_y() - 1), -src.vel_u(i, src.cells_y()));
+    EXPECT_FALSE(std::isnan(src.vel_v(i, src.cells_y() - 1)));
+    EXPECT_FALSE(std::isnan(src.vel_v(i, src.cells_y())));
+    EXPECT_EQ(src.vel_v(i, src.cells_y() - 1), -src.vel_v(i, src.cells_y()));
   }
 
-  NeumannBC bottom_bc(src.ghostcells_bottom_Temp(),
-                      src.bndrycells_bottom_Temp());
-  bottom_bc.apply(0.0);
+  NeumannBC bottom_Temp_bc(src.ghostcells_bottom_Temp(),
+                           src.bndrycells_bottom_Temp());
+  bottom_Temp_bc.apply(0.0);
+  NeumannBC bottom_vel_u_bc(src.ghostcells_bottom_vel_u(),
+                            src.bndrycells_bottom_vel_u());
+  bottom_vel_u_bc.apply(0.0);
+  NeumannBC bottom_vel_v_bc(src.ghostcells_bottom_vel_v(),
+                            src.bndrycells_bottom_vel_v());
+  bottom_vel_v_bc.apply(0.0);
   // Check that every cell is untouched except for the top and bottom ghost
   // cells
   for (int i = -1; i < src.cells_x() + 1; i++) {
@@ -626,6 +1138,16 @@ TEST(boundary_cond, homogeneous) {
       } else {
         EXPECT_EQ(saved.Temp(i, j), src.Temp(i, j));
       }
+      if (std::isnan(saved.vel_u(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_u(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_u(i, j), src.vel_u(i, j));
+      }
+      if (std::isnan(saved.vel_u(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_v(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_v(i, j), src.vel_v(i, j));
+      }
     }
   }
   // The corners should still be NaN
@@ -633,6 +1155,14 @@ TEST(boundary_cond, homogeneous) {
   EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), -1)));
   EXPECT_TRUE(std::isnan(src.Temp(-1, src.cells_y())));
   EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), src.cells_y())));
 
   // Ensure that the boundary condition is met - since it's homogeneous it
   // should be exact
@@ -640,10 +1170,23 @@ TEST(boundary_cond, homogeneous) {
     EXPECT_FALSE(std::isnan(src.Temp(i, 0)));
     EXPECT_FALSE(std::isnan(src.Temp(i, -1)));
     EXPECT_EQ(src.Temp(i, 0), src.Temp(i, -1));
+    EXPECT_FALSE(std::isnan(src.vel_u(i, 0)));
+    EXPECT_FALSE(std::isnan(src.vel_u(i, -1)));
+    EXPECT_EQ(src.vel_u(i, 0), src.vel_u(i, -1));
+    EXPECT_FALSE(std::isnan(src.vel_v(i, 0)));
+    EXPECT_FALSE(std::isnan(src.vel_v(i, -1)));
+    EXPECT_EQ(src.vel_v(i, 0), src.vel_v(i, -1));
   }
 
-  NeumannBC right_bc(src.ghostcells_right_Temp(), src.bndrycells_right_Temp());
-  right_bc.apply(0.0);
+  NeumannBC right_Temp_bc(src.ghostcells_right_Temp(),
+                          src.bndrycells_right_Temp());
+  right_Temp_bc.apply(0.0);
+  NeumannBC right_vel_u_bc(src.ghostcells_right_vel_u(),
+                           src.bndrycells_right_vel_u());
+  right_vel_u_bc.apply(0.0);
+  NeumannBC right_vel_v_bc(src.ghostcells_right_vel_v(),
+                           src.bndrycells_right_vel_v());
+  right_vel_v_bc.apply(0.0);
   // Check that every cell is untouched except for the right, top, and bottom
   // ghost cells
   for (int i = -1; i < src.cells_x(); i++) {
@@ -653,31 +1196,15 @@ TEST(boundary_cond, homogeneous) {
       } else {
         EXPECT_EQ(saved.Temp(i, j), src.Temp(i, j));
       }
-    }
-  }
-  // The corners should still be NaN
-  EXPECT_TRUE(std::isnan(src.Temp(-1, -1)));
-  EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), -1)));
-  EXPECT_TRUE(std::isnan(src.Temp(-1, src.cells_y())));
-  EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), src.cells_y())));
-
-  // Ensure that the boundary condition is met - since it's homogeneous it
-  // should be exact
-  for (int j = 0; j < src.cells_y(); j++) {
-    EXPECT_FALSE(std::isnan(src.Temp(src.cells_x() - 1, j)));
-    EXPECT_FALSE(std::isnan(src.Temp(src.cells_x(), j)));
-    EXPECT_EQ(src.Temp(src.cells_x() - 1, j), src.Temp(src.cells_x(), j));
-  }
-
-  DirichletBC left_bc(src.ghostcells_left_Temp(), src.bndrycells_left_Temp());
-  left_bc.apply(0.0);
-  // Check that every interior cell is untouched
-  for (int i = 0; i < src.cells_x(); i++) {
-    for (int j = 0; j < src.cells_y(); j++) {
-      if (std::isnan(saved.Temp(i, j))) {
-        EXPECT_TRUE(std::isnan(src.Temp(i, j)));
+      if (std::isnan(saved.vel_u(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_u(i, j)));
       } else {
-        EXPECT_EQ(saved.Temp(i, j), src.Temp(i, j));
+        EXPECT_EQ(saved.vel_u(i, j), src.vel_u(i, j));
+      }
+      if (std::isnan(saved.vel_v(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_v(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_v(i, j), src.vel_v(i, j));
       }
     }
   }
@@ -686,6 +1213,71 @@ TEST(boundary_cond, homogeneous) {
   EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), -1)));
   EXPECT_TRUE(std::isnan(src.Temp(-1, src.cells_y())));
   EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), src.cells_y())));
+
+  // Ensure that the boundary condition is met - since it's homogeneous it
+  // should be exact
+  for (int j = 0; j < src.cells_y(); j++) {
+    EXPECT_FALSE(std::isnan(src.Temp(src.cells_x() - 1, j)));
+    EXPECT_FALSE(std::isnan(src.Temp(src.cells_x(), j)));
+    EXPECT_EQ(src.Temp(src.cells_x() - 1, j), src.Temp(src.cells_x(), j));
+    EXPECT_FALSE(std::isnan(src.vel_u(src.cells_x() - 1, j)));
+    EXPECT_FALSE(std::isnan(src.vel_u(src.cells_x(), j)));
+    EXPECT_EQ(src.vel_u(src.cells_x() - 1, j), src.vel_u(src.cells_x(), j));
+    EXPECT_FALSE(std::isnan(src.vel_v(src.cells_x() - 1, j)));
+    EXPECT_FALSE(std::isnan(src.vel_v(src.cells_x(), j)));
+    EXPECT_EQ(src.vel_v(src.cells_x() - 1, j), src.vel_v(src.cells_x(), j));
+  }
+
+  DirichletBC left_Temp_bc(src.ghostcells_left_Temp(),
+                           src.bndrycells_left_Temp());
+  left_Temp_bc.apply(0.0);
+  DirichletBC left_vel_u_bc(src.ghostcells_left_vel_u(),
+                            src.bndrycells_left_vel_u());
+  left_vel_u_bc.apply(0.0);
+  DirichletBC left_vel_v_bc(src.ghostcells_left_vel_v(),
+                            src.bndrycells_left_vel_v());
+  left_vel_v_bc.apply(0.0);
+  // Check that every interior cell is untouched
+  for (int i = 0; i < src.cells_x(); i++) {
+    for (int j = 0; j < src.cells_y(); j++) {
+      if (std::isnan(saved.Temp(i, j))) {
+        EXPECT_TRUE(std::isnan(src.Temp(i, j)));
+      } else {
+        EXPECT_EQ(saved.Temp(i, j), src.Temp(i, j));
+      }
+      if (std::isnan(saved.vel_u(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_u(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_u(i, j), src.vel_u(i, j));
+      }
+      if (std::isnan(saved.vel_v(i, j))) {
+        EXPECT_TRUE(std::isnan(src.vel_v(i, j)));
+      } else {
+        EXPECT_EQ(saved.vel_v(i, j), src.vel_v(i, j));
+      }
+    }
+  }
+  // The corners should still be NaN
+  EXPECT_TRUE(std::isnan(src.Temp(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.Temp(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.Temp(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_u(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_u(src.cells_x(), src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), -1)));
+  EXPECT_TRUE(std::isnan(src.vel_v(-1, src.cells_y())));
+  EXPECT_TRUE(std::isnan(src.vel_v(src.cells_x(), src.cells_y())));
 
   // Ensure that the boundary condition is met - since it's homogeneous it
   // should be exact
@@ -693,6 +1285,12 @@ TEST(boundary_cond, homogeneous) {
     EXPECT_FALSE(std::isnan(src.Temp(0, j)));
     EXPECT_FALSE(std::isnan(src.Temp(-1, j)));
     EXPECT_EQ(src.Temp(-1, j), -src.Temp(0, j));
+    EXPECT_FALSE(std::isnan(src.vel_u(0, j)));
+    EXPECT_FALSE(std::isnan(src.vel_u(-1, j)));
+    EXPECT_EQ(src.vel_u(-1, j), -src.vel_u(0, j));
+    EXPECT_FALSE(std::isnan(src.vel_v(0, j)));
+    EXPECT_FALSE(std::isnan(src.vel_v(-1, j)));
+    EXPECT_EQ(src.vel_v(-1, j), -src.vel_v(0, j));
   }
 }
 

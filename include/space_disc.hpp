@@ -60,6 +60,14 @@ public:
       : diffusion_(diffusion), reynolds_(reynolds), prandtl_(prandtl),
         eckert_(eckert), inv_rp_(1.0 / (reynolds * prandtl)) {}
 
+  real diffusion() const noexcept { return diffusion_; }
+
+  real reynolds() const noexcept { return reynolds_; }
+
+  real prandtl() const noexcept { return prandtl_; }
+
+  real eckert() const noexcept { return eckert_; }
+
 protected:
   real diffusion_;
   real reynolds_, prandtl_, eckert_;
@@ -72,54 +80,36 @@ public:
   using Assembly = EnergyAssembly<SecondOrderCentered>;
 
   // Terms for implicit euler
-  [[nodiscard]] constexpr real Dx_p1(const Mesh &mesh, int i, int j)
-      const noexcept {
-    if (i < mesh.cells_x()) {
-      return (mesh.vel_u(i + 1, j) / 2.0 - this->inv_rp_ / mesh.dx()) /
-             mesh.dx();
-    } else {
-      return 0.0;
-    }
+  [[nodiscard]] real Dx_p1(const Mesh &mesh, int i, int j) const noexcept {
+    return (mesh.vel_u(i + 1, j) / 2.0 -
+            this->diffusion_ * this->inv_rp_ / mesh.dx()) /
+           mesh.dx();
   }
 
-  [[nodiscard]] constexpr real Dx_0(const Mesh &mesh, int i, int j)
-      const noexcept {
-    return 2.0 * this->inv_rp_ / (mesh.dx() * mesh.dx());
+  [[nodiscard]] real Dx_0(const Mesh &mesh, int i, int j) const noexcept {
+    return 2.0 * this->diffusion_ * this->inv_rp_ / (mesh.dx() * mesh.dx());
   }
 
-  [[nodiscard]] constexpr real Dx_m1(const Mesh &mesh, int i, int j)
-      const noexcept {
-    if (i >= 0) {
-      return (-mesh.vel_u(i - 1, j) / 2.0 - this->inv_rp_ / mesh.dx()) /
-             mesh.dx();
-    } else {
-      return 0.0;
-    }
+  [[nodiscard]] real Dx_m1(const Mesh &mesh, int i, int j) const noexcept {
+    return (-mesh.vel_u(i - 1, j) / 2.0 -
+            this->diffusion_ * this->inv_rp_ / mesh.dx()) /
+           mesh.dx();
   }
 
-  [[nodiscard]] constexpr real Dy_p1(const Mesh &mesh, int i, int j)
-      const noexcept {
-    if (j < mesh.cells_y()) {
-      return (mesh.vel_v(i, j + 1) / 2.0 - this->inv_rp_ / mesh.dy()) /
-             mesh.dy();
-    } else {
-      return 0.0;
-    }
+  [[nodiscard]] real Dy_p1(const Mesh &mesh, int i, int j) const noexcept {
+    return (mesh.vel_v(i, j + 1) / 2.0 -
+            this->diffusion_ * this->inv_rp_ / mesh.dy()) /
+           mesh.dy();
   }
 
-  [[nodiscard]] constexpr real Dy_0(const Mesh &mesh, int i, int j)
-      const noexcept {
-    return 2.0 * this->inv_rp_ / (mesh.dy() * mesh.dy());
+  [[nodiscard]] real Dy_0(const Mesh &mesh, int i, int j) const noexcept {
+    return 2.0 * this->diffusion_ * this->inv_rp_ / (mesh.dy() * mesh.dy());
   }
 
-  [[nodiscard]] constexpr real Dy_m1(const Mesh &mesh, int i, int j)
-      const noexcept {
-    if (j >= 0) {
-      return (-mesh.vel_v(i, j - 1) / 2.0 - this->inv_rp_ / mesh.dy()) /
-             mesh.dy();
-    } else {
-      return 0.0;
-    }
+  [[nodiscard]] real Dy_m1(const Mesh &mesh, int i, int j) const noexcept {
+    return (-mesh.vel_v(i, j - 1) / 2.0 -
+            this->diffusion_ * this->inv_rp_ / mesh.dy()) /
+           mesh.dy();
   }
 
   // Centered FV approximation to (u T)_{i+1/2, j}
