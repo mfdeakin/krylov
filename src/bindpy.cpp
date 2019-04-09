@@ -48,6 +48,22 @@ PYBIND11_MODULE(krylov, module) {
                  .attr("reshape")(m.cells_x() + 2 * m.ghost_cells,
                                   m.cells_y() + 2 * m.ghost_cells);
            })
+      .def("vel_u_array",
+           [](Mesh &m) {
+             return py::array((m.cells_x() + 2 * m.ghost_cells) *
+                                  (m.cells_y() + 2 * m.ghost_cells),
+                              m.data_vel_u())
+                 .attr("reshape")(m.cells_x() + 2 * m.ghost_cells,
+                                  m.cells_y() + 2 * m.ghost_cells);
+           })
+      .def("vel_v_array",
+           [](Mesh &m) {
+             return py::array((m.cells_x() + 2 * m.ghost_cells) *
+                                  (m.cells_y() + 2 * m.ghost_cells),
+                              m.data_vel_v())
+                 .attr("reshape")(m.cells_x() + 2 * m.ghost_cells,
+                                  m.cells_y() + 2 * m.ghost_cells);
+           })
       .def("grid_x",
            [](Mesh &m) {
              xt::xtensor<real, 2> grid(std::array<size_t, 2>{
@@ -211,12 +227,19 @@ PYBIND11_MODULE(krylov, module) {
       .export_values();
 
   py::class_<SecondOrderCentered> space_disc(module, "SecondOrderCentered");
-  space_disc.def(py::init<const real, const real, const real, const real>());
+  space_disc.def(py::init<const real, const real, const real, const real>())
+      .def("Dx_m1", &SecondOrderCentered::Dx_m1)
+      .def("Dx_0", &SecondOrderCentered::Dx_0)
+      .def("Dx_p1", &SecondOrderCentered::Dx_p1)
+      .def("Dy_m1", &SecondOrderCentered::Dy_m1)
+      .def("Dy_0", &SecondOrderCentered::Dy_0)
+      .def("Dy_p1", &SecondOrderCentered::Dy_p1);
 
   py::class_<TimeDisc<SecondOrderCentered>,
              std::shared_ptr<TimeDisc<SecondOrderCentered>>>(module,
                                                              "_TimeDiscBase")
       .def("mesh", &TimeDisc<SecondOrderCentered>::mesh)
+      .def("space_disc", &TimeDisc<SecondOrderCentered>::space_disc)
       .def("cur_time", &TimeDisc<SecondOrderCentered>::cur_time);
   // The Implicit Euler Solvers
   py::class_<ImplicitEuler<SecondOrderCentered, LUSolver>,
