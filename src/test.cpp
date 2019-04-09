@@ -426,6 +426,135 @@ TEST(solve_80_40_gmres, implicit_euler) {
             << std::endl;
 }
 
+TEST(preconditioner, gmres) {
+  constexpr int sys_size = 10;
+  GMRESTDPSolver<2> gmres(sys_size);
+  matrix A(matrix::shape_type{sys_size, sys_size});
+  vector b(vector::shape_type{sys_size});
+
+  std::random_device rd;
+  std::mt19937_64 rng(rd());
+  std::uniform_real_distribution<real> pdf(-100.0, 100.0);
+  for (int i = 0; i < sys_size; i++) {
+    for (int j = 0; j < sys_size; j++) {
+      A(i, j) = pdf(rng);
+    }
+    b(i) = pdf(rng);
+  }
+  const matrix &P = gmres.assemble_preconditioner(A);
+  EXPECT_EQ(P.shape()[0], sys_size);
+  EXPECT_EQ(P.shape()[1], 3);
+  for (int i = 0; i < sys_size; i++) {
+    if (i > 0) {
+      EXPECT_EQ(P(i, 0), A(i, i - 1));
+    }
+    EXPECT_EQ(P(i, 1), A(i, i));
+    if (i < sys_size - 1) {
+      EXPECT_EQ(P(i, 2), A(i, i + 1));
+    }
+  }
+  gmres.initial_subspace(b);
+  const vector v1 = gmres.subspace_vector(0);
+  gmres.add_arnoldi(A);
+  const vector v2 = gmres.subspace_vector(1);
+  real dp;
+  dot(dp, v1, v1);
+  EXPECT_NEAR(dp, 1.0, 1e-15);
+  dot(dp, v2, v1);
+  EXPECT_NEAR(dp, 0.0, 1e-15);
+  dot(dp, v2, v2);
+  EXPECT_NEAR(dp, 1.0, 1e-15);
+}
+
+TEST(known_preconditioner, gmres) {
+  constexpr int sys_size = 10;
+  GMRESTDPSolver<3> gmres(sys_size);
+  matrix A(matrix::shape_type{sys_size, sys_size});
+  vector b{0.0, 0.0, 0.0, 0.0, 1.0, 5.0, 1.0, 0.0, 0.0, 0.0};
+  for (int i = 0; i < sys_size; i++) {
+    for (int j = 0; j < sys_size; j++) {
+      A(i, j) = 0.0;
+    }
+    A(i, i) = -2.0;
+    if (i < sys_size - 1) {
+      A(i, i + 1) = 1.0;
+    }
+    if (i > 0) {
+      A(i, i - 1) = 1.0;
+    }
+  }
+  A(0, 0) = -1;
+  const matrix &P = gmres.assemble_preconditioner(A);
+  EXPECT_EQ(P.shape()[0], sys_size);
+  EXPECT_EQ(P.shape()[1], 3);
+  EXPECT_EQ(P(0, 1), -1.0);
+  EXPECT_EQ(P(0, 2), 1.0);
+  for (int i = 1; i < sys_size - 1; i++) {
+    EXPECT_EQ(P(i, 0), 1.0);
+    EXPECT_EQ(P(i, 1), -2.0);
+    EXPECT_EQ(P(i, 2), 1.0);
+  }
+  EXPECT_EQ(P(sys_size - 1, 0), 1.0);
+  EXPECT_EQ(P(sys_size - 1, 1), -2.0);
+  A(0, 0) = -2.0;
+  EXPECT_EQ(P(0, 1), -1.0);
+  const real beta = gmres.initial_subspace(b);
+  EXPECT_NEAR(beta, std::sqrt(3) * 3.0, 1e-15);
+  const real h10 = gmres.add_arnoldi(A);
+  EXPECT_NEAR(gmres.hessenberg(0, 0), 1.0, 1e-15);
+  EXPECT_NEAR(gmres.hessenberg(1, 0), h10, 1e-15);
+  EXPECT_NEAR(h10, 35.0 * std::sqrt(3) / 9.0, 1e-15);
+  const vector v2 = gmres.subspace_vector(1);
+  EXPECT_NEAR(v2(0), 1.0, 1e-15);
+  for (int i = 1; i < sys_size; i++) {
+    EXPECT_NEAR(v2(i), 0.0, 2e-15);
+  }
+  const real h21 = gmres.add_arnoldi(A);
+  EXPECT_NEAR(gmres.hessenberg(0, 1), 0.0, 1e-15);
+  EXPECT_NEAR(gmres.hessenberg(1, 1), 11.0, 1e-15);
+  EXPECT_NEAR(gmres.hessenberg(2, 1), 0.0, 1e-15);
+  EXPECT_NEAR(h21, 0.0, 1e-15);
+  // Because we know the norm of the vector was rather small, we don't bother
+  // checking that the components are also small, especially since the vector
+  // was normalized
+}
+
+TEST(known_preconditioner_from_solve, gmres) {
+  constexpr int sys_size = 10;
+  GMRESTDPSolver<3> gmres(sys_size);
+  matrix A(matrix::shape_type{sys_size, sys_size});
+  for (int i = 0; i < sys_size; i++) {
+    for (int j = 0; j < sys_size; j++) {
+      A(i, j) = s_nan;
+    }
+	}
+  const matrix &P = gmres.assemble_preconditioner(A);
+  vector b{0.0, 0.0, 0.0, 0.0, 1.0, 5.0, 1.0, 0.0, 0.0, 0.0};
+  for (int i = 0; i < sys_size; i++) {
+    for (int j = 0; j < sys_size; j++) {
+      A(i, j) = 0.0;
+    }
+    A(i, i) = -2.0;
+    if (i < sys_size - 1) {
+      A(i, i + 1) = 1.0;
+    }
+    if (i > 0) {
+      A(i, i - 1) = 1.0;
+    }
+  }
+  A(0, 0) = -1;
+	gmres.solve(A, b);
+  EXPECT_EQ(P(0, 1), -1.0);
+  EXPECT_EQ(P(0, 2), 1.0);
+  for (int i = 1; i < sys_size - 1; i++) {
+    EXPECT_EQ(P(i, 0), 1.0);
+    EXPECT_EQ(P(i, 1), -2.0);
+    EXPECT_EQ(P(i, 2), 1.0);
+  }
+  EXPECT_EQ(P(sys_size - 1, 0), 1.0);
+  EXPECT_EQ(P(sys_size - 1, 1), -2.0);
+}
+
 ImplicitEulerApproxFact<SecondOrderCentered>
 default_ie_af_solver(const int cells_x, const int cells_y) {
   constexpr real reynolds = 25.0;

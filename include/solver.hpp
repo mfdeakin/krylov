@@ -173,16 +173,11 @@ public:
     return beta;
   }
 
-  void shrink_subspace() {
-    // Our subspace was larger than we needed, so shrink to fit
-    reduced_solver.resize(subspace.size() - 1);
-    matrix new_H(matrix::shape_type{subspace.size(), subspace.size() - 1});
-    for (unsigned long i = 0; i < new_H.shape()[0]; i++) {
-      for (unsigned long j = 0; j < new_H.shape()[1]; j++) {
-        new_H(i, j) = H(i, j);
-      }
-    }
-    std::swap(H, new_H);
+  real hessenberg(int i, int j) const noexcept {
+    assert(subspace.size() > 1);
+    assert(j < subspace.size());
+    assert(i < num_iters);
+    return H(i, j);
   }
 
   // The compiler should be able to inline this function, so not using static
@@ -288,25 +283,43 @@ public:
 
   explicit GMRESTDPSolver(unsigned long sys_size)
       : Parent(sys_size), td(sys_size),
-        sparse_tdiags(matrix::shape_type{sys_size, 3}),
-        next_unp(vector::shape_type{sys_size}) {}
+        sparse_tdiags(matrix::shape_type{sys_size, 3}) {}
 
   virtual ~GMRESTDPSolver() = default;
 
   const vector &solve(const matrix &system, const vector &sol) {
+    assemble_preconditioner(system);
+    return Parent::solve(system, sol);
+  }
+
+  const matrix &assemble_preconditioner(const matrix &system) {
     // We need to initialize the sparse_tdiags matrix for preconditioning
-    for (int i = 0; i < system.shape()[0]; i++) {
+    sparse_tdiags(0, 0) = s_nan;
+    sparse_tdiags(0, 1) = system(0, 0);
+    assert(sparse_tdiags(0, 1) != 0.0);
+    sparse_tdiags(0, 2) = system(0, 1);
+    for (unsigned long i = 1; i < system.shape()[0] - 1; i++) {
       sparse_tdiags(i, 0) = system(i, i - 1);
       sparse_tdiags(i, 1) = system(i, i);
+      assert(sparse_tdiags(i, 1) != 0.0);
       sparse_tdiags(i, 2) = system(i, i + 1);
     }
-    return Parent::solve(system, sol);
+    sparse_tdiags(system.shape()[0] - 1, 0) =
+        system(system.shape()[0] - 1, system.shape()[0] - 2);
+    sparse_tdiags(system.shape()[0] - 1, 1) =
+        system(system.shape()[0] - 1, system.shape()[0] - 1);
+    assert(sparse_tdiags(system.shape()[0] - 1, 1) != 0.0);
+    sparse_tdiags(system.shape()[0] - 1, 2) = s_nan;
+    return sparse_tdiags;
   }
 
   virtual real add_arnoldi(const matrix &system) {
     assert(this->subspace.size() > 0);
-    dot(next_unp, system, *(this->subspace.end() - 1));
-    vector next = td.solve(sparse_tdiags, next_unp);
+		const vector &prev_v = *(this->subspace.end() - 1);
+    const vector &next_pc =
+        td.solve(sparse_tdiags, prev_v);
+    vector next(next_pc.shape());
+    dot(next, system, next_pc);
     const unsigned long j = this->subspace.size() - 1;
     // Apply Gram-Schmidt to compute the orthogonal component
     this->gram_schmidt(next, this->subspace);
@@ -317,7 +330,6 @@ public:
 protected:
   SparseTriDiagSolver td;
   matrix sparse_tdiags;
-  vector next_unp;
 };
 
 class TriDiagSolver : public Solver {

@@ -439,6 +439,157 @@ PYBIND11_MODULE(krylov, module) {
       .def("delta",
            &ImplicitEuler<SecondOrderCentered, GMRESSolver<50>>::delta);
 
+  py::class_<
+      ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>,
+      std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>>,
+      TimeDisc<SecondOrderCentered>>
+      ie_gmrestdp10_solver(module, "ImplicitEulerGMRESTDPSolver10");
+  ie_gmrestdp10_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>::timestep)
+      .def("system",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>::sys)
+      .def("solution",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>::sol)
+      .def("delta",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<10>>::delta);
+  py::class_<
+      ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>,
+      std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>>,
+      TimeDisc<SecondOrderCentered>>
+      ie_gmrestdp20_solver(module, "ImplicitEulerGMRESTDPSolver20");
+  ie_gmrestdp20_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>::timestep)
+      .def("system",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>::sys)
+      .def("solution",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>::sol)
+      .def("delta",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<20>>::delta);
+  py::class_<
+      ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>,
+      std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>>,
+      TimeDisc<SecondOrderCentered>>
+      ie_gmrestdp30_solver(module, "ImplicitEulerGMRESTDPSolver30");
+  ie_gmrestdp30_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>::timestep)
+      .def("system",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>::sys)
+      .def("solution",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>::sol)
+      .def("delta",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<30>>::delta);
+  py::class_<
+      ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>,
+      std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>>,
+      TimeDisc<SecondOrderCentered>>
+      ie_gmrestdp40_solver(module, "ImplicitEulerGMRESTDPSolver40");
+  ie_gmrestdp40_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>::timestep)
+      .def("system",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>::sys)
+      .def("solution",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>::sol)
+      .def("delta",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<40>>::delta);
+  py::class_<
+      ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>,
+      std::shared_ptr<ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>>,
+      TimeDisc<SecondOrderCentered>>
+      ie_gmrestdp50_solver(module, "ImplicitEulerGMRESTDPSolver50");
+  ie_gmrestdp50_solver
+      .def(py::init<const std::pair<real, real>, const std::pair<real, real>,
+                    const size_t, const size_t,
+                    std::function<triple(real, real)>,
+                    const SecondOrderCentered &,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>,
+                    std::pair<BCType, std::function<real(real, real, real)>>>())
+      .def("timestep",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>::timestep)
+      .def("system",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>::sys)
+      .def("solution",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>::sol)
+      .def("delta",
+           &ImplicitEuler<SecondOrderCentered, GMRESTDPSolver<50>>::delta);
+
   py::class_<matrix> matrix_obj(module, "Matrix");
   matrix_obj.def(py::init<matrix::shape_type>())
       .def("shape", [](const matrix &m) { return m.shape(); })
@@ -534,4 +685,24 @@ PYBIND11_MODULE(krylov, module) {
   py::class_<GMRESSolver<50>> gmres50_solver(module, "GMRESSolver50");
   gmres50_solver.def(py::init<unsigned long>())
       .def("solve", &GMRESSolver<50>::solve);
+
+  py::class_<GMRESTDPSolver<10>> gmrestdp10_solver(module, "GMRESTDPSolver10");
+  gmrestdp10_solver.def(py::init<unsigned long>())
+      .def("solve", &GMRESTDPSolver<10>::solve);
+
+  py::class_<GMRESTDPSolver<20>> gmrestdp20_solver(module, "GMRESTDPSolver20");
+  gmrestdp20_solver.def(py::init<unsigned long>())
+      .def("solve", &GMRESTDPSolver<20>::solve);
+
+  py::class_<GMRESTDPSolver<30>> gmrestdp30_solver(module, "GMRESTDPSolver30");
+  gmrestdp30_solver.def(py::init<unsigned long>())
+      .def("solve", &GMRESTDPSolver<30>::solve);
+
+  py::class_<GMRESTDPSolver<40>> gmrestdp40_solver(module, "GMRESTDPSolver40");
+  gmrestdp40_solver.def(py::init<unsigned long>())
+      .def("solve", &GMRESTDPSolver<40>::solve);
+
+  py::class_<GMRESTDPSolver<50>> gmrestdp50_solver(module, "GMRESTDPSolver50");
+  gmrestdp50_solver.def(py::init<unsigned long>())
+      .def("solve", &GMRESTDPSolver<50>::solve);
 }
