@@ -442,7 +442,7 @@ public:
 
   real timestep(const real dt) noexcept {
     this->apply_bcs();
-    // Solve (I + dt Dy) (I + dt Dx) dT = FI + S
+    // Solve (I + dt Dy) (I + dt Dx) dT = dt (FI + S)
     // Start in the Y direction, with constant i
     for (int i = 0; i < this->cur_state.cells_x(); i++) {
       assemble_system_dy(dt, i);
@@ -452,8 +452,9 @@ public:
       // The interior cells are given by the flux integral and source term
       for (int j = 0; j < this->cur_state.cells_y(); j++) {
         sol_vec_dy(j + Mesh::ghost_cells) =
-            this->space.flux_integral(this->cur_state, i, j) +
-            this->space.source_fd(this->cur_state, i, j);
+            (this->space.flux_integral(this->cur_state, i, j) +
+             this->space.source_fd(this->cur_state, i, j)) *
+            dt;
       }
       const vector &col_sol = solver_dy.solve(system_dy, sol_vec_dy);
       // We don't actually care about the dT values for the boundary conditions,
