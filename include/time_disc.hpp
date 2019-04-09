@@ -132,7 +132,9 @@ public:
                        [=](const int j) { return cur_state.median_y(j); },
                        right_vel_v_bc_.second, cur_state.dx(),
                        right_vel_v_bc_.first) {}
-  constexpr Mesh &mesh() noexcept { return cur_state; }
+  constexpr const Mesh &mesh() noexcept { return cur_state; }
+  constexpr const SpaceDisc &space_disc() noexcept { return space; }
+
   constexpr real cur_time() const noexcept { return time; }
 
   constexpr real diffusion() const noexcept { return space.diffusion(); }
@@ -433,7 +435,10 @@ public:
         solver_dy(cells_y + 2 * Mesh::ghost_cells),
         system_dy(matrix::shape_type{cells_y + 2 * Mesh::ghost_cells, 3}),
         sol_vec_dy(vector::shape_type{cells_y + 2 * Mesh::ghost_cells}),
-        partial_sol(matrix::shape_type{cells_x, cells_y}) {}
+        partial_sol(matrix::shape_type{cells_x, cells_y}) {
+    // So the system methods can be used out of the box
+    this->apply_bcs();
+  }
 
   real timestep(const real dt) noexcept {
     this->apply_bcs();
@@ -491,9 +496,11 @@ public:
 
     // Now the interior cells
     for (unsigned long j = 1; j < system_dy.shape()[0] - 1; j++) {
-      system_dy(j, 0) = this->space.Dy_m1(this->cur_state, i, j) * dt;
-      system_dy(j, 1) = this->space.Dy_0(this->cur_state, i, j) * dt + 1.0;
-      system_dy(j, 2) = this->space.Dy_p1(this->cur_state, i, j) * dt;
+      system_dy(j, 0) = this->space.Dy_m1(this->cur_state, i, j - 1) * dt;
+      assert(!std::isnan(system_dy(j, 0)));
+      system_dy(j, 1) = this->space.Dy_0(this->cur_state, i, j - 1) * dt + 1.0;
+      system_dy(j, 2) = this->space.Dy_p1(this->cur_state, i, j - 1) * dt;
+      assert(!std::isnan(system_dy(j, 2)));
     }
     return system_dy;
   }
@@ -511,9 +518,11 @@ public:
 
     // Now the interior cells
     for (unsigned long i = 1; i < system_dx.shape()[0] - 1; i++) {
-      system_dx(i, 0) = this->space.Dx_m1(this->cur_state, i, j) * dt;
-      system_dx(i, 1) = this->space.Dx_0(this->cur_state, i, j) * dt + 1.0;
-      system_dx(i, 2) = this->space.Dx_p1(this->cur_state, i, j) * dt;
+      system_dx(i, 0) = this->space.Dx_m1(this->cur_state, i - 1, j) * dt;
+      assert(!std::isnan(system_dx(i, 0)));
+      system_dx(i, 1) = this->space.Dx_0(this->cur_state, i - 1, j) * dt + 1.0;
+      system_dx(i, 2) = this->space.Dx_p1(this->cur_state, i - 1, j) * dt;
+      assert(!std::isnan(system_dx(i, 2)));
     }
     return system_dx;
   }
